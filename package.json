@@ -1,0 +1,19 @@
+{
+  "name": "d-render",
+  "version": "1.0.0",
+  "description": "A hotwired-compatible lib with declarative programing",
+  "main": "./dist/d_render.js",
+  "author": "Cantin Xu",
+  "license": "MIT",
+  "dependencies": {
+    "esbuild": "^0.15.7"
+  },
+  "scripts": {
+    "build": "esbuild src/d_render.js --bundle --sourcemap --outdir=dist --format=esm",
+    "start": "http-server . -p 8888"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "jquery": "^3.6.1"
+  }
+}

@@ -1,0 +1,594 @@
+// src/util.js
+var turboCompatible = true;
+var debug = {
+  logAllFuncStr: false,
+  keepDirectives: turboCompatible,
+  logCompiledFuncExecutionError: true
+};
+var addReturnToScriptStr = (str) => {
+  let arr = str.split(";");
+  let last = arr[arr.length - 1];
+  arr[arr.length - 1] = `return ${last}`;
+  return arr.join(";\n");
+};
+var unsafeEvalSupported = (() => {
+  let unsafeEval = true;
+  try {
+    const func = new Function("param1", "param2", "param3", "return param1[param2] === param3;");
+    unsafeEval = func({ a: "b" }, "a", "b") === true;
+  } catch (e) {
+    unsafeEval = false;
+  }
+  return unsafeEval;
+})();
+var fallbackCompileToFunc = (codeStr) => {
+  var result;
+  window.evalCallback = (r) => result = r;
+  var newScript = document.createElement("script");
+  var nonce = document.querySelector("meta[name=csp-nonce]").content;
+  newScript.setAttribute("nonce", nonce);
+  newScript.innerHTML = "evalCallback(" + codeStr + ");";
+  document.body.appendChild(newScript);
+  document.body.removeChild(newScript);
+  delete window.evalCallback;
+  return result;
+};
+var compileToFunc = (...args) => {
+  let options = typeof args[args.length - 1] == "object" ? args.pop() : {};
+  let { addReturn = false } = options;
+  if (addReturn) {
+    args[args.length - 1] = addReturnToScriptStr(args[args.length - 1]);
+  }
+  if (debug.logCompiledFuncExecutionError) {
+    let str = args[args.length - 1];
+    let logStr = str.replaceAll('"', `\\"`).replaceAll("\n", "\\n");
+    str = `
+      try {
+        ${str}
+      } catch (e) {
+        console.log("Error occurred when executing compiled function:")
+        console.log("${logStr}")
+        throw e
+      }
+    `;
+    args[args.length - 1] = str;
+  }
+  try {
+    if (unsafeEvalSupported) {
+      debug.logAllFuncStr && console.log("Compile string to function via 'new Function()':\n", `new Function(${args.map((e) => `"${e}"`).join(", ")})`);
+      return new Function(...args);
+    } else {
+      let body = args.pop();
+      let str = `function(${args.join(", ")}) { ${body} }`;
+      debug.logAllFuncStr && console.log("Compile string to function via <script>:\n", str);
+      return fallbackCompileToFunc(str);
+    }
+  } catch (e) {
+    console.log("Error occurred when compiling function from string:");
+    console.log(args[args.length - 1]);
+    throw e;
+  }
+};
+var getDescriptor = (obj, method) => {
+  let prototype = Object.getPrototypeOf(obj);
+  let descriptor = void 0;
+  while (true) {
+    descriptor = Object.getOwnPropertyDescriptor(prototype, method);
+    if (descriptor != void 0 || prototype == Object.prototype) {
+      break;
+    } else {
+      prototype = Object.getPrototypeOf(prototype);
+    }
+  }
+  return descriptor;
+};
+var compileWithComponent = (str, component, ...args) => {
+  let func;
+  let descriptor = getDescriptor(component, str);
+  if (descriptor && !descriptor.get && typeof component[str] == "function") {
+    func = component[str].bind(component);
+  } else {
+    let transformStrFunc = args[args.length - 1];
+    if (typeof transformStrFunc == "function") {
+      args.pop();
+      str = transformStrFunc(str);
+    } else {
+      str = addReturnToScriptStr(str);
+    }
+    str = `
+        with(this) {
+          with(context) {
+            with (state) {
+              ${str}
+            }
+          }
+        }
+      `;
+    func = compileToFunc(...args, str).bind(component);
+  }
+  return func;
+};
+var deepMerge = (obj, ...sources) => {
+  for (let source of sources) {
+    for (let key in source) {
+      let value = obj[key], newValue = source[key];
+      if (value && value.constructor == Object && newValue && newValue.constructor == Object) {
+        obj[key] = deepMerge(value, newValue);
+      } else {
+        obj[key] = newValue;
+      }
+    }
+  }
+  return obj;
+};
+var getAttribute = (node, name) => node.getAttribute(name);
+var setAttribute = (node, name, value) => node.setAttribute(name, value);
+var removeAttribute2 = (node, name) => node.removeAttribute(name);
+var getData2 = (node, name) => {
+  try {
+    return JSON.parse(node.dataset[name]);
+  } catch (e) {
+    return node.dataset[name];
+  }
+};
+var setData2 = (node, name, value) => node.dataset[name] = typeof value == "object" ? JSON.stringify(value) : value;
+var findInside2 = (node, selector) => [...$(node).find(selector)];
+var querySelectorAll = (selector) => [...document.querySelectorAll(selector)];
+var parents = (node, selector) => $(node).parents(select).toArray();
+var isTag = (node, selector) => $(node).is(selector);
+var isNil = (obj) => obj === void 0 || obj === null;
+
+// src/hook_helpers.js
+var collectPrefixes = (str) => {
+  let prefixes = str.match(/^\.[^\s]+\s/);
+  if (prefixes) {
+    prefixes = prefixes[0].substring(1).split(".").map((prefix) => `.${prefix}`.trim());
+    str = str.replace(/^\.[^\s]+\s/, "");
+  }
+  return [str, prefixes];
+};
+var generateEventFunc = (identifier, event, preDefinedStr = null) => {
+  return (component, node) => {
+    let originalStr = preDefinedStr ? preDefinedStr.trim() : getAttribute(node, identifier).trim();
+    let [str, prefixes] = collectPrefixes(originalStr);
+    let handler = compileWithComponent(str, component, "event", (str2) => str2[0] == "{" ? `this.setState(${str2})` : str2);
+    prefixes && prefixes.forEach((prefix) => {
+      handler = Prefixes[prefix] ? Prefixes[prefix](handler, component, node, prefixes) : handler;
+    });
+    component.addEventListener(event, node, handler);
+    !debug.keepDirectives && removeAttribute2(node, identifier);
+  };
+};
+var generatePrefixFunc = (func) => {
+  return (handler, component, node, prefixes) => {
+    return (event) => {
+      func(handler, event, component, node, prefixes);
+    };
+  };
+};
+var generateDirectiveFunc = (identifier, prop, callbackFunc) => {
+  return (component, node) => {
+    let originalProp = prop ? getAttribute(node, prop) : null;
+    let str = getAttribute(node, identifier).trim();
+    let resultFunc = compileWithComponent(str, component, "node", "transition");
+    !debug.keepDirectives && removeAttribute2(node, identifier);
+    component.renderHooks.push({
+      identifier,
+      value: str,
+      node,
+      hook: (transition) => callbackFunc(node, resultFunc(node, transition), component, originalProp)
+    });
+  };
+};
+var Prefixes = {
+  ".prevent": generatePrefixFunc((handler, event, _component, _node, _prefixes) => {
+    event.preventDefault();
+    handler(event);
+  }),
+  ".stop": generatePrefixFunc((handler, event, _component, _node, _prefixes) => {
+    event.stopPropagation();
+    handler(event);
+  }),
+  ".debounce": generatePrefixFunc((handler, event, _component, node, _prefixes) => {
+    let time = getAttribute(node, "d-debounce-duration") || 400;
+    let timer = parseInt(getData(node, `drender-${event.type}-debounce`));
+    timer && clearTimeout(timer);
+    timer = setTimeout(() => handler(event), time);
+    setData(node, `drender-${event.type}-debounce`, timer);
+  })
+};
+
+// src/hooks.js
+var Hooks = {
+  "d-model": (component, node) => {
+    let key = getAttribute(node, "d-model");
+    let a = generateEventFunc("d-model", "input", `{ ${key}: event.target.value }`);
+    a(component, node);
+    component.renderHooks.push({
+      identifier: "d-model",
+      value: key,
+      node,
+      hook: () => node.value = component.state[key]
+    });
+  },
+  "d-loop": (component, node) => {
+    if (node.children.length != 1) {
+      throw new Error("Must only have one root element inside the d-loop.");
+    }
+    let keyStr = getAttribute(node.children[0], "d-key"), loopStr = getAttribute(node, "d-loop"), varStr = getAttribute(node, "d-loop-var") || "loopItem", loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`;
+    !getAttribute(node.children[0], "d-component") && setAttribute(node.children[0], "d-component", "");
+    if (keyStr == void 0) {
+      throw new Error("The root element inside d-loop must have d-key directive");
+    }
+    const loopFunc = compileWithComponent(loopStr, component);
+    const keyFunc = compileWithComponent(keyStr, component, loopItemKey, loopItem, loopItemIndex);
+    const iterate = (items, func) => {
+      if (items.constructor == Array) {
+        items.forEach((value, index) => func({ [loopItemKey]: null, [loopItem]: value, [loopItemIndex]: index }));
+      } else {
+        Object.entries(items).forEach(([key, value], index) => func({ [loopItemKey]: key, [loopItem]: value, [loopItemIndex]: index }));
+      }
+    };
+    orginalNode = node.children[0].cloneNode(true);
+    node.innerHTML = "";
+    const append = (childComponentKey, context) => {
+      let childNode = orginalNode.cloneNode(true);
+      childNode.context = { ...context, _loopComponentKey: childComponentKey };
+      node.appendChild(childNode);
+      return createComponent(childNode);
+    };
+    iterate(loopFunc(component), (context) => {
+      let childComponentKey = keyFunc(...Object.values(context));
+      append(childComponentKey, context);
+    });
+    if (!debug.keepDirectives) {
+      removeAttribute(node, "d-loop d-loop-var");
+      for (const child of node.children) {
+        removeAttribute(child, "d-key");
+      }
+    }
+    const loopHook = () => {
+      let results = loopFunc(component);
+      let updated = {};
+      let children = [...node.children].reduce((map, child) => {
+        let component2 = child._dComponent;
+        map[component2.context._loopComponentKey] = component2;
+        return map;
+      }, {});
+      iterate(results, (context) => {
+        let childComponentKey = keyFunc(...Object.values(context));
+        let childComponent = children[childComponentKey];
+        if (childComponent) {
+          childComponent.context = deepMerge({}, childComponent.context, context);
+        } else {
+          childComponent = append(childComponentKey, context);
+        }
+        $node.appendChild(childComponent.element);
+        updated[childComponentKey] = true;
+      });
+      Object.entries(children).forEach(([k, childComponent]) => {
+        updated[k] == void 0 && childComponent.element.remove();
+      });
+    };
+    component.stateHooks.push({
+      identifier: "d-loop",
+      value: loopStr,
+      node,
+      hook: loopHook
+    });
+  },
+  "d-keyup": generateEventFunc("d-keyup", "keyup"),
+  "d-keypress": generateEventFunc("d-keypress", "keypress"),
+  "d-change": generateEventFunc("d-change", "change"),
+  "d-input": generateEventFunc("d-input", "input"),
+  "d-click": generateEventFunc("d-click", "click"),
+  "d-submit": generateEventFunc("d-submit", "submit"),
+  "d-focus": generateEventFunc("d-focus", "focus"),
+  "d-blur": generateEventFunc("d-blur", "blur"),
+  "d-show": generateDirectiveFunc("d-show", null, (node, result, _component) => {
+    node.classList.toggle("hidden", !!!result);
+  }),
+  "d-debounce-show": generateDirectiveFunc("d-debounce-show", null, (node, result, _component) => {
+    let timer = parseInt(getData2(node, "drender-debounce-show"));
+    if (!!result == true) {
+      let time = getAttribute(node, "d-debounce-duration") || 400;
+      timer && clearTimeout(timer);
+      timer = setTimeout(() => node.classList.toggle("hidden", !!!result), time);
+      setData2(node, `drender-debounce-show`, timer);
+    } else {
+      node.classList.toggle("hidden", !!!result);
+      timer && clearTimeout(timer);
+    }
+  }),
+  "d-class": generateDirectiveFunc("d-class", "class", (node, result, _component, originalClassName) => {
+    if (typeof result == "object") {
+      Object.entries(result).forEach(([name, state]) => node.classList.toggle(name, state));
+    } else {
+      node.className = `${originalClassName || ""} ${result}`;
+    }
+  }),
+  "d-debounce-class": generateDirectiveFunc("d-debounce-class", null, (node, result, _component) => {
+    let timerHash = getData2(node, `drender-debounce-class`) || {};
+    Object.entries(result).forEach(([name, state]) => {
+      let timer = timerHash[name];
+      if (state) {
+        let time = node.getAttribute("d-debounce-duration") || 400;
+        timer && clearTimeout(timer);
+        timer = setTimeout(() => {
+          node.classList.add(name);
+        }, time);
+        timerHash[name] = timer;
+      } else {
+        node.classList.remove(name);
+        timer && clearTimeout(timer);
+      }
+    });
+    setData2(node, "drender-debounce-class", timerHash);
+  }),
+  "d-style": generateDirectiveFunc("d-style", null, (node, result, _component) => {
+    Object.entries(result).forEach(([name, state]) => node.style[name] = state);
+  }),
+  "d-disabled": generateDirectiveFunc("d-disabled", null, (node, result, _component) => {
+    node.disabled = !!result;
+  }),
+  "d-readonly": generateDirectiveFunc("d-readonly", "readonly", (node, result, _component, _originalProp) => {
+    node.readOnly = !!result;
+  }),
+  "d-text": generateDirectiveFunc("d-text", null, (node, result, _component, _originalProp) => {
+    isTag(node, "input, textarea") ? node.value = result : node.innerText = result;
+  }),
+  "d-html": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
+    isTag(node, "input, textarea") ? node.value = result : node.innerHTML = result;
+  }),
+  "d-prop": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
+    Object.entries(result).forEach(([name, state]) => node[name] = state);
+  }),
+  "d-on-state-change": (component, node) => {
+    let str = getAttribute(node, "d-on-state-change");
+    let func = compileWithComponent(str, component, "node", "prevState");
+    component.stateHooks.push({
+      identifier: "d-on-state-change",
+      value: str,
+      node,
+      hook: (prevState) => func(node, prevState)
+    });
+    !debug.keepDirectives && removeAttribute(node, "d-on-state-change");
+  },
+  "d-on-render": (component, node) => {
+    let str = getAttribute(node, "d-on-render");
+    let func = compileWithComponent(str, component, "node", "transition");
+    component.renderHooks.push({
+      identifier: "d-on-render",
+      value: str,
+      node,
+      hook: (transition) => func(node, transition)
+    });
+    !debug.keepDirectives && removeAttribute(node, "d-on-render");
+  }
+};
+
+// src/component.js
+var Component = class {
+  constructor(element) {
+    this.element = element;
+    this.renderHooks = [];
+    this.stateHooks = [];
+    this.refs = {};
+    this.eventsMap = {};
+    let state = {}, str = getAttribute(element, "d-state");
+    if (str) {
+      str = `
+        with(this) {
+          with(context) {
+            return ${str}
+          }
+        }
+      `;
+      state = compileToFunc("context = {}", str).bind(this)(this.context);
+    }
+    this.state = deepMerge({}, state);
+    this.initialState = deepMerge({}, this.state);
+    this.registerHooks();
+    this.registerRefs();
+  }
+  addEventListener(eventIdentifier, node, handler) {
+    !this.eventsMap[node] && (this.eventsMap[node] = {});
+    this.eventsMap[node][eventIdentifier] = handler;
+    node.addEventListener(eventIdentifier, handler);
+  }
+  removeEventListener(eventIdentifier, node) {
+    let handler = this.eventsMap[node][eventIdentifier];
+    node.removeEventListener(eventIdentifier, handler);
+  }
+  afterInitialized() {
+    let hook = "d-after-initialized";
+    const func = (node) => {
+      let str = getAttribute(node, hook).trim();
+      let resultFunc = compileWithComponent(str, this, "node");
+      resultFunc(node);
+    };
+    this.findTopLevel(`[${hook}]`).forEach(func);
+    getAttribute(this.element, hook) && func(this.element);
+  }
+  get context() {
+    return this.element._dComponentContext || {};
+  }
+  set context(context) {
+    return this.element._dComponentContext = context;
+  }
+  set parent(parent) {
+    this._parent = parent;
+  }
+  get parent() {
+    return this._parent || parents(this.element, "[d-component], [d-state]")[0]._dComponent;
+  }
+  set children(children) {
+    this._children = children;
+  }
+  get children() {
+    if (this._children) {
+      return [...this._children];
+    } else {
+      return this.findChildrenElements({ includeElementInLoop: true }).map((e) => e._dComponent);
+    }
+  }
+  findChildrenElements({ includeElementInLoop = false } = {}) {
+    let descendant = null;
+    if (includeElementInLoop) {
+      descendant = findInside2(this.element, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+    } else {
+      descendant = findInside2(this.element, "[d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+    }
+    return findInside2(this.element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
+  }
+  findTopLevel(selector) {
+    let descendant;
+    if (selector == "[d-loop]") {
+      descendant = findInside2(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
+    } else {
+      descendant = findInside2(this.element, `[d-loop] ${selector}, [d-loop]${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
+    }
+    let elements = findInside2(this.element, selector).filter((ele) => !descendant.includes(ele));
+    isTag(this.element, selector) && elements.unshift(this.element);
+    return elements;
+  }
+  registerRefs() {
+    this.findTopLevel("[d-ref]").forEach((ele) => {
+      let name = getAttribute(ele, "d-ref");
+      if (name.slice(-2) == "[]") {
+        name = name.slice(0, -2);
+        !this.refs[name] && (this.refs[name] = []);
+        this.refs[name].push(ele);
+      } else {
+        this.refs[name] = ele;
+      }
+      !debug.keepDirectives && removeAttribute2(ele, "d-ref");
+    });
+  }
+  classSpecificHooks() {
+    return {};
+  }
+  registerHooks() {
+    Object.entries(Hooks).concat(Object.entries(this.classSpecificHooks())).forEach(([hook, func]) => {
+      this.findTopLevel(`[${hook}]`).forEach((ele) => {
+        func(this, ele);
+      });
+    });
+  }
+  transistionOnStateChanging(prevState, state) {
+    prevState == state;
+    return {};
+  }
+  _mergeState(state, newState) {
+    return deepMerge(state, newState);
+  }
+  shouldFollowRender(parent, transition) {
+    return true;
+  }
+  setState(state = {}, transition = {}, triggerRendering = true) {
+    let prevState = this.state;
+    let cloned = deepMerge({}, this.state);
+    let newState = typeof state == "function" ? state(cloned) : this._mergeState(cloned, state);
+    this.state = newState;
+    setAttribute(this.element, "d-state", JSON.stringify(newState));
+    this.stateHooks.forEach((obj) => obj.hook(prevState));
+    transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition);
+    triggerRendering && this.render(transition);
+    return deepMerge({}, newState);
+  }
+  render(transition = {}) {
+    this.renderHooks.forEach((obj) => obj.hook(transition));
+    this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
+  }
+  get root() {
+    let par = this.parent;
+    while (true) {
+      if (par.parent) {
+        par = par.parent;
+      } else {
+        break;
+      }
+    }
+    return par;
+  }
+};
+
+// src/d_render.js
+var Classes = {};
+var registerComponents = (...components) => {
+  components.forEach((component) => Classes[component.name] = component);
+  DRender.observer && run();
+};
+var createComponent2 = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
+  if (node._dComponent != void 0)
+    return node._dComponent;
+  node._dComponentContext = context;
+  let className = getAttribute(node, "d-component");
+  if (ignoreIfClassNotFound && !isNil(className) && !Classes[className]) {
+    debugger;
+    return null;
+  }
+  let _class = Classes[className] || Component, component = new _class(node);
+  console.log(component);
+  node._dComponent = component;
+  let children = component.findChildrenElements();
+  children.map((child) => createComponent2(child, { context }));
+  component.afterInitialized();
+  if (!debug.keepDirectives) {
+    getAttribute(node, "d-state") && setAttribute(node, "d-state", "");
+    getAttribute(node, "d-component") && setAttribute(node, "d-component", "");
+  }
+  return component;
+};
+var run = () => {
+  if (!DRender.observer) {
+    DRender.observer = new MutationObserver((mutationsList, _observer) => {
+      for (const mutation of mutationsList) {
+        if (mutation.type === "childList") {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === node.ELEMENT_NODE) {
+              if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
+                createComponent2($(node)).render();
+                emitEnvent(node, "d-component-initialized-from-mutation");
+              } else {
+                if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
+                  let descendant2 = findInside(node, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+                  let top2 = findInside(node, "[d-state], [d-component]").filter((ele) => !descendant2.includes(ele));
+                  top2.forEach((node2) => createComponent2(node2).render());
+                  top2.forEach((node2) => emitEnvent(node2, "d-component-initialized-from-mutation"));
+                }
+              }
+            }
+          });
+        }
+      }
+    });
+    DRender.observer.observe(document, { childList: true, subtree: true });
+  }
+  let descendant = querySelectorAll("[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+  let top = querySelectorAll("[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
+  top.forEach((node) => {
+    let component = createComponent2(node, { ignoreIfClassNotFound: true });
+    component && component.render();
+  });
+};
+var DRender = {
+  run,
+  registerComponents,
+  Classes,
+  Component,
+  Hooks,
+  Prefixes,
+  createComponent: createComponent2,
+  generateEventFunc,
+  generateDirectiveFunc,
+  generatePrefixFunc,
+  debug,
+  compileToFunc,
+  compileWithComponent
+};
+var d_render_default = DRender;
+export {
+  d_render_default as default
+};
+//# sourceMappingURL=d_render.js.map

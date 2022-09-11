@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta content='text/html; charset=UTF-8' http-equiv='Content-Type'>
+<title>DRender Demo</title>
+<meta content='width=device-width,initial-scale=1' name='viewport'>
+<style>
+  .hidden { display: none }
+</style>
+<script type='module'>
+import './node_modules/jquery/dist/jquery.js';
+import DRender from "./dist/d_render.js";
+window.$ = jQuery;
+document.addEventListener("DOMContentLoaded", () => DRender.run())
+</script>
+</head>
+<body>
+<div d-state='{ count: 0, visible: false }'>
+<p d-text='count'></p>
+<div d-show='visible'>This div will be display while clicking the link below even times.</div>
+<a d-click='{ count: count + 1, visible: !visible }' href='javascript:void(0)'>
+Increase
+</a>
+</div>
+</body>
+</html>
