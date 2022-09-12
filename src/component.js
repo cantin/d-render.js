@@ -1,4 +1,4 @@
-import { debug, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, getData, compileToFunc, compileWithComponent } from './util'
+import { debug, isNil, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, getData, compileToFunc, compileWithComponent } from './util'
 import { Hooks } from './hooks'
 
 class Component {
@@ -81,7 +81,7 @@ class Component {
   }
 
   get parent() {
-    return this._parent || parents(this.element, '[d-component], [d-state]')[0]._dComponent
+    return this._parent || parents(this.element, '[d-component], [d-state]')[0]?._dComponent
   }
 
   set children(children) {
@@ -166,6 +166,8 @@ class Component {
     return deepMerge(state, newState)
   }
 
+  // A function to determine whether child components should re-render or not while parent get re-rendering.
+  // meant to be overridden
   shouldFollowRender(parent, transition) {
     return true
   }
@@ -176,7 +178,7 @@ class Component {
     let newState = typeof state == 'function' ?  state(cloned) : this._mergeState(cloned, state)
 
     this.state = newState
-    setAttribute(this.element, 'd-state', JSON.stringify(newState))
+    debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(newState))
 
     this.stateHooks.forEach(obj => obj.hook(prevState))
 
@@ -205,4 +207,42 @@ class Component {
   }
 }
 
-export { Component }
+const Classes = {}
+const registerComponents = (...components) => {
+  components.forEach(component => Classes[component.name] = component)
+  DRender.observer && run() // run again only if we've run it before
+}
+
+// Create a component isntance and attach it to the element with key 'd-component'
+// The argument `context` would be stored in element data 'd-component-context', and be used for directive functions
+const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
+  if (node._dComponent != undefined) return node._dComponent
+
+  node._dComponentContext = context
+
+  let className = getAttribute(node, 'd-component')
+
+  // Return if the specified class is not registered to DRender yet
+  // We will back to it later while the component class is registered to DRender
+  // The component must be a top level component.
+  if (ignoreIfClassNotFound && !isNil(className) && !Classes[className]) {
+    return null
+  }
+
+  let _class = (Classes[className] || Component), component = new _class(node)
+  node._dComponent = component
+
+  let children = component.findChildrenElements()
+  children.map(child => createComponent(child, { context }))
+
+  component.afterInitialized()
+
+  if (!debug.keepDirectives) {
+    getAttribute(node, 'd-state') && setAttribute(node, 'd-state', '')
+    getAttribute(node, 'd-component') && setAttribute(node, 'd-component', '')
+  }
+
+  return component
+}
+
+export { Component, createComponent, Classes, registerComponents }

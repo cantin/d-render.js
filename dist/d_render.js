@@ -1,8 +1,7 @@
 // src/util.js
-var turboCompatible = true;
 var debug = {
   logAllFuncStr: false,
-  keepDirectives: turboCompatible,
+  keepDirectives: false,
   logCompiledFuncExecutionError: true
 };
 var addReturnToScriptStr = (str) => {
@@ -123,7 +122,7 @@ var deepMerge = (obj, ...sources) => {
 };
 var getAttribute = (node, name) => node.getAttribute(name);
 var setAttribute = (node, name, value) => node.setAttribute(name, value);
-var removeAttribute2 = (node, name) => node.removeAttribute(name);
+var removeAttribute = (node, name) => node.removeAttribute(name);
 var getData2 = (node, name) => {
   try {
     return JSON.parse(node.dataset[name]);
@@ -132,10 +131,19 @@ var getData2 = (node, name) => {
   }
 };
 var setData2 = (node, name, value) => node.dataset[name] = typeof value == "object" ? JSON.stringify(value) : value;
-var findInside2 = (node, selector) => [...$(node).find(selector)];
-var querySelectorAll = (selector) => [...document.querySelectorAll(selector)];
-var parents = (node, selector) => $(node).parents(select).toArray();
-var isTag = (node, selector) => $(node).is(selector);
+var emitEvent = (node, event) => node.dispatchEvent(new Event(event));
+var findInside = (node, selector) => [...node.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
+var querySelectorAll = (selector) => [...document.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
+var parents = (node, selector) => {
+  let parents2 = [];
+  let par = node.parentElement;
+  while (par != null) {
+    isTag(par, selector) && parents2.push(par);
+    par = par.parentElement;
+  }
+  return parents2;
+};
+var isTag = (node, selector) => node.matches(selector);
 var isNil = (obj) => obj === void 0 || obj === null;
 
 // src/hook_helpers.js
@@ -156,7 +164,7 @@ var generateEventFunc = (identifier, event, preDefinedStr = null) => {
       handler = Prefixes[prefix] ? Prefixes[prefix](handler, component, node, prefixes) : handler;
     });
     component.addEventListener(event, node, handler);
-    !debug.keepDirectives && removeAttribute2(node, identifier);
+    !debug.keepDirectives && removeAttribute(node, identifier);
   };
 };
 var generatePrefixFunc = (func) => {
@@ -171,7 +179,7 @@ var generateDirectiveFunc = (identifier, prop, callbackFunc) => {
     let originalProp = prop ? getAttribute(node, prop) : null;
     let str = getAttribute(node, identifier).trim();
     let resultFunc = compileWithComponent(str, component, "node", "transition");
-    !debug.keepDirectives && removeAttribute2(node, identifier);
+    !debug.keepDirectives && removeAttribute(node, identifier);
     component.renderHooks.push({
       identifier,
       value: str,
@@ -229,13 +237,12 @@ var Hooks = {
         Object.entries(items).forEach(([key, value], index) => func({ [loopItemKey]: key, [loopItem]: value, [loopItemIndex]: index }));
       }
     };
-    orginalNode = node.children[0].cloneNode(true);
+    let originalNode = node.children[0].cloneNode(true);
     node.innerHTML = "";
     const append = (childComponentKey, context) => {
-      let childNode = orginalNode.cloneNode(true);
-      childNode.context = { ...context, _loopComponentKey: childComponentKey };
+      let childNode = originalNode.cloneNode(true);
       node.appendChild(childNode);
-      return createComponent(childNode);
+      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey } });
     };
     iterate(loopFunc(component), (context) => {
       let childComponentKey = keyFunc(...Object.values(context));
@@ -263,7 +270,7 @@ var Hooks = {
         } else {
           childComponent = append(childComponentKey, context);
         }
-        $node.appendChild(childComponent.element);
+        node.appendChild(childComponent.element);
         updated[childComponentKey] = true;
       });
       Object.entries(children).forEach(([k, childComponent]) => {
@@ -286,17 +293,17 @@ var Hooks = {
   "d-focus": generateEventFunc("d-focus", "focus"),
   "d-blur": generateEventFunc("d-blur", "blur"),
   "d-show": generateDirectiveFunc("d-show", null, (node, result, _component) => {
-    node.classList.toggle("hidden", !!!result);
+    node.classList.toggle("d-render-hidden", !!!result);
   }),
   "d-debounce-show": generateDirectiveFunc("d-debounce-show", null, (node, result, _component) => {
-    let timer = parseInt(getData2(node, "drender-debounce-show"));
+    let timer = parseInt(getData2(node, "dRenderDebounceShowTimer"));
     if (!!result == true) {
       let time = getAttribute(node, "d-debounce-duration") || 400;
       timer && clearTimeout(timer);
-      timer = setTimeout(() => node.classList.toggle("hidden", !!!result), time);
-      setData2(node, `drender-debounce-show`, timer);
+      timer = setTimeout(() => node.classList.toggle("d-render-hidden", !!!result), time);
+      setData2(node, `dRenderDebounceShowTimer`, timer);
     } else {
-      node.classList.toggle("hidden", !!!result);
+      node.classList.toggle("d-render-hidden", !!!result);
       timer && clearTimeout(timer);
     }
   }),
@@ -308,7 +315,7 @@ var Hooks = {
     }
   }),
   "d-debounce-class": generateDirectiveFunc("d-debounce-class", null, (node, result, _component) => {
-    let timerHash = getData2(node, `drender-debounce-class`) || {};
+    let timerHash = getData2(node, `dRenderDebounceClass`) || {};
     Object.entries(result).forEach(([name, state]) => {
       let timer = timerHash[name];
       if (state) {
@@ -323,7 +330,7 @@ var Hooks = {
         timer && clearTimeout(timer);
       }
     });
-    setData2(node, "drender-debounce-class", timerHash);
+    setData2(node, "dRenderDebounceClass", timerHash);
   }),
   "d-style": generateDirectiveFunc("d-style", null, (node, result, _component) => {
     Object.entries(result).forEach(([name, state]) => node.style[name] = state);
@@ -420,7 +427,7 @@ var Component = class {
     this._parent = parent;
   }
   get parent() {
-    return this._parent || parents(this.element, "[d-component], [d-state]")[0]._dComponent;
+    return this._parent || parents(this.element, "[d-component], [d-state]")[0]?._dComponent;
   }
   set children(children) {
     this._children = children;
@@ -435,20 +442,20 @@ var Component = class {
   findChildrenElements({ includeElementInLoop = false } = {}) {
     let descendant = null;
     if (includeElementInLoop) {
-      descendant = findInside2(this.element, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+      descendant = findInside(this.element, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
     } else {
-      descendant = findInside2(this.element, "[d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+      descendant = findInside(this.element, "[d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
     }
-    return findInside2(this.element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
+    return findInside(this.element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
   }
   findTopLevel(selector) {
     let descendant;
     if (selector == "[d-loop]") {
-      descendant = findInside2(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
+      descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
     } else {
-      descendant = findInside2(this.element, `[d-loop] ${selector}, [d-loop]${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
+      descendant = findInside(this.element, `[d-loop] ${selector}, [d-loop]${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
     }
-    let elements = findInside2(this.element, selector).filter((ele) => !descendant.includes(ele));
+    let elements = findInside(this.element, selector).filter((ele) => !descendant.includes(ele));
     isTag(this.element, selector) && elements.unshift(this.element);
     return elements;
   }
@@ -462,7 +469,7 @@ var Component = class {
       } else {
         this.refs[name] = ele;
       }
-      !debug.keepDirectives && removeAttribute2(ele, "d-ref");
+      !debug.keepDirectives && removeAttribute(ele, "d-ref");
     });
   }
   classSpecificHooks() {
@@ -490,7 +497,7 @@ var Component = class {
     let cloned = deepMerge({}, this.state);
     let newState = typeof state == "function" ? state(cloned) : this._mergeState(cloned, state);
     this.state = newState;
-    setAttribute(this.element, "d-state", JSON.stringify(newState));
+    debug.keepDirectives && setAttribute(this.element, "d-state", JSON.stringify(newState));
     this.stateHooks.forEach((obj) => obj.hook(prevState));
     transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition);
     triggerRendering && this.render(transition);
@@ -512,27 +519,23 @@ var Component = class {
     return par;
   }
 };
-
-// src/d_render.js
 var Classes = {};
 var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
   DRender.observer && run();
 };
-var createComponent2 = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
+var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != void 0)
     return node._dComponent;
   node._dComponentContext = context;
   let className = getAttribute(node, "d-component");
   if (ignoreIfClassNotFound && !isNil(className) && !Classes[className]) {
-    debugger;
     return null;
   }
   let _class = Classes[className] || Component, component = new _class(node);
-  console.log(component);
   node._dComponent = component;
   let children = component.findChildrenElements();
-  children.map((child) => createComponent2(child, { context }));
+  children.map((child) => createComponent(child, { context }));
   component.afterInitialized();
   if (!debug.keepDirectives) {
     getAttribute(node, "d-state") && setAttribute(node, "d-state", "");
@@ -540,22 +543,24 @@ var createComponent2 = (node, { context = {}, ignoreIfClassNotFound = false } = 
   }
   return component;
 };
-var run = () => {
-  if (!DRender.observer) {
-    DRender.observer = new MutationObserver((mutationsList, _observer) => {
+
+// src/d_render.js
+var run2 = () => {
+  if (!DRender2.observer) {
+    DRender2.observer = new MutationObserver((mutationsList, _observer) => {
       for (const mutation of mutationsList) {
         if (mutation.type === "childList") {
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
               if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
-                createComponent2($(node)).render();
-                emitEnvent(node, "d-component-initialized-from-mutation");
+                createComponent(node).render();
+                emitEvent(node, "d-component-initialized-from-mutation");
               } else {
                 if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
                   let descendant2 = findInside(node, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
                   let top2 = findInside(node, "[d-state], [d-component]").filter((ele) => !descendant2.includes(ele));
-                  top2.forEach((node2) => createComponent2(node2).render());
-                  top2.forEach((node2) => emitEnvent(node2, "d-component-initialized-from-mutation"));
+                  top2.forEach((node2) => createComponent(node2).render());
+                  top2.forEach((node2) => emitEvent(node2, "d-component-initialized-from-mutation"));
                 }
               }
             }
@@ -563,23 +568,25 @@ var run = () => {
         }
       }
     });
-    DRender.observer.observe(document, { childList: true, subtree: true });
+    DRender2.observer.observe(document, { childList: true, subtree: true });
+    const addCSS = (css) => document.head.appendChild(document.createElement("style")).innerHTML = css;
+    addCSS(".d-render-hidden { display: none }");
   }
   let descendant = querySelectorAll("[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
   let top = querySelectorAll("[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
   top.forEach((node) => {
-    let component = createComponent2(node, { ignoreIfClassNotFound: true });
+    let component = createComponent(node, { ignoreIfClassNotFound: true });
     component && component.render();
   });
 };
-var DRender = {
-  run,
+var DRender2 = {
+  run: run2,
   registerComponents,
   Classes,
   Component,
   Hooks,
   Prefixes,
-  createComponent: createComponent2,
+  createComponent,
   generateEventFunc,
   generateDirectiveFunc,
   generatePrefixFunc,
@@ -587,7 +594,7 @@ var DRender = {
   compileToFunc,
   compileWithComponent
 };
-var d_render_default = DRender;
+var d_render_default = DRender2;
 export {
   d_render_default as default
 };

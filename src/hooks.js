@@ -2,20 +2,21 @@
 //  The hook function gets executed in Component#registerHooks.
 //  Each of them registers a hook object either to the renderHooks which invoked in Component#render,
 //  or to the stateHooks which invoked in Component#setState
-//  The hook function takes two arguments: component, $node.
+//  The hook function takes two arguments: component, node.
 //
 //  e.g: add a d-debug directive to log the state
-//    Hooks['d-debug'] = (component, $node) => {
+//    Hooks['d-debug'] = (component, node) => {
 //    component.stateHooks.push({
 //      identifier: 'd-log',
 //      value: null,
-//      $node,
+//      node,
 //      hook: () => console.log(component.state)
 //    })
 //  }
 
 import { collectPrefixes, generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './hook_helpers'
-import { debug, isTag, deepMerge, compileWithComponent, getAttribute, setAttribute, getData, setData } from './util'
+import { debug, isTag, deepMerge, compileWithComponent, getAttribute, setAttribute, removeAttribute, getData, setData } from './util'
+import { createComponent } from './component'
 
 const Hooks = {
   'd-model': (component, node) => {
@@ -57,14 +58,13 @@ const Hooks = {
       }
     }
 
-    orginalNode = node.children[0].cloneNode(true)
+    let originalNode = node.children[0].cloneNode(true)
     node.innerHTML = ''
 
     const append = (childComponentKey, context) => {
-      let childNode = orginalNode.cloneNode(true)
-      childNode.context = { ...context, _loopComponentKey: childComponentKey }
+      let childNode = originalNode.cloneNode(true)
       node.appendChild(childNode)
-      return createComponent(childNode)
+      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey }})
     }
 
     iterate(loopFunc(component), (context) => {
@@ -96,7 +96,7 @@ const Hooks = {
         } else {
           childComponent = append(childComponentKey, context)
         }
-        $node.appendChild(childComponent.element)
+        node.appendChild(childComponent.element)
         updated[childComponentKey] = true
       })
 
@@ -121,17 +121,17 @@ const Hooks = {
   'd-focus': generateEventFunc('d-focus', 'focus'),
   'd-blur': generateEventFunc('d-blur', 'blur'),
   'd-show': generateDirectiveFunc('d-show', null, (node, result, _component) => {
-    node.classList.toggle('hidden', !(!!result))
+    node.classList.toggle('d-render-hidden', !(!!result))
   }),
   'd-debounce-show': generateDirectiveFunc('d-debounce-show', null, (node, result, _component) => {
-    let timer = parseInt(getData(node, 'drender-debounce-show'))
+    let timer = parseInt(getData(node, 'dRenderDebounceShowTimer'))
     if (!!result == true) {
       let time = getAttribute(node, 'd-debounce-duration') || 400
       timer && clearTimeout(timer);
-      timer = setTimeout(() => node.classList.toggle('hidden', !(!!result)), time);
-      setData(node, `drender-debounce-show`, timer)
+      timer = setTimeout(() => node.classList.toggle('d-render-hidden', !(!!result)), time);
+      setData(node, `dRenderDebounceShowTimer`, timer)
     } else {
-      node.classList.toggle('hidden', !(!!result))
+      node.classList.toggle('d-render-hidden', !(!!result))
       timer && clearTimeout(timer);
     }
   }),
@@ -143,7 +143,7 @@ const Hooks = {
     }
   }),
   'd-debounce-class': generateDirectiveFunc('d-debounce-class', null, (node, result, _component) => {
-    let timerHash = getData(node, `drender-debounce-class`) || {}
+    let timerHash = getData(node, `dRenderDebounceClass`) || {}
     Object.entries(result).forEach(([name, state]) => {
       let timer = timerHash[name]
       if (state) {
@@ -156,7 +156,7 @@ const Hooks = {
         timer && clearTimeout(timer);
       }
     })
-    setData(node, 'drender-debounce-class', timerHash)
+    setData(node, 'dRenderDebounceClass', timerHash)
   }),
   'd-style': generateDirectiveFunc('d-style', null, (node, result, _component) => {
     Object.entries(result).forEach(([name, state]) => node.style[name] = state)

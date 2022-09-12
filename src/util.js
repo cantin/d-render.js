@@ -1,8 +1,8 @@
-let turboCompatible = true
+//let turboCompatible = true
 
 const debug = {
   logAllFuncStr: false,
-  keepDirectives: turboCompatible,
+  keepDirectives: false,
   logCompiledFuncExecutionError: true,
 }
 
@@ -160,13 +160,23 @@ const getData = (node, name) => {
   }
 }
 const setData = (node, name, value) => node.dataset[name] = (typeof value == 'object' ? JSON.stringify(value) : value)
-const emitEnvent = (node, event) => node.dispatchEvent(new Event(event))
-const findInside = (node, selector) => [...$(node).find(selector)]
-const querySelectorAll = selector => [...document.querySelectorAll(selector)]
+const emitEvent = (node, event) => node.dispatchEvent(new Event(event))
 
-const parents = (node, selector) => $(node).parents(select).toArray()
-const isTag = (node, selector) => $(node).is(selector)
+// Prepend :scope to make it works like jQuery() and jQuery.find
+const findInside = (node, selector) => [...node.querySelectorAll(selector.split(",").map(se => `:scope ${se}`).join(", "))]
+const querySelectorAll = selector => [...document.querySelectorAll(selector.split(",").map(se => `:scope ${se}`).join(", "))]
 
+
+const parents = (node, selector) => {
+  let parents = []
+  let par = node.parentElement
+  while (par != null) {
+    isTag(par, selector) && parents.push(par)
+    par = par.parentElement
+  }
+  return parents
+}
+const isTag = (node, selector) => node.matches(selector)
 const isNil = (obj) => obj === undefined || obj === null
 
 export {
@@ -182,7 +192,7 @@ export {
   removeAttribute,
   getData,
   setData,
-  emitEnvent,
+  emitEvent,
   findInside,
   querySelectorAll,
   parents,
