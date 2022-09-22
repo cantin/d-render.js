@@ -1,5 +1,6 @@
-import { debug, isNil, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, getData, compileToFunc, compileWithComponent } from './util'
+import { debug, isNil, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent } from './util'
 import { Hooks } from './hooks'
+import DRender from './d_render'
 
 class Component {
   constructor(element) {
@@ -53,7 +54,6 @@ class Component {
       resultFunc(node)
     }
     this.findTopLevel(`[${hook}]`).forEach(func)
-    getAttribute(this.element, hook) && func(this.element)
   }
 
   // The key of context object could be direclty used in html directive.
@@ -81,7 +81,7 @@ class Component {
   }
 
   get parent() {
-    return this._parent || parents(this.element, '[d-component], [d-state]')[0]?._dComponent
+    return this._parent || (parents(this.element, '[d-component], [d-state]')[0] && parents(this.element, '[d-component], [d-state]')[0]._dComponent)
   }
 
   set children(children) {
@@ -213,6 +213,13 @@ const registerComponents = (...components) => {
   DRender.observer && run() // run again only if we've run it before
 }
 
+const defineComponent = (name, component) => {
+  const nameIt = (name) => ({[name] : class extends Component {}})[name];
+  const klass = nameIt(name)
+  Object.assign(klass.prototype, component)
+  registerComponents(klass)
+}
+
 // Create a component isntance and attach it to the element with key 'd-component'
 // The argument `context` would be stored in element data 'd-component-context', and be used for directive functions
 const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
@@ -245,4 +252,4 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
   return component
 }
 
-export { Component, createComponent, Classes, registerComponents }
+export { Component, createComponent, Classes, registerComponents, defineComponent }

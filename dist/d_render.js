@@ -415,7 +415,6 @@ var Component = class {
       resultFunc(node);
     };
     this.findTopLevel(`[${hook}]`).forEach(func);
-    getAttribute(this.element, hook) && func(this.element);
   }
   get context() {
     return this.element._dComponentContext || {};
@@ -427,7 +426,7 @@ var Component = class {
     this._parent = parent;
   }
   get parent() {
-    return this._parent || parents(this.element, "[d-component], [d-state]")[0]?._dComponent;
+    return this._parent || parents(this.element, "[d-component], [d-state]")[0] && parents(this.element, "[d-component], [d-state]")[0]._dComponent;
   }
   set children(children) {
     this._children = children;
@@ -522,7 +521,14 @@ var Component = class {
 var Classes = {};
 var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
-  DRender.observer && run();
+  d_render_default.observer && run();
+};
+var defineComponent = (name, component) => {
+  const nameIt = (name2) => ({ [name2]: class extends Component {
+  } })[name2];
+  const klass = nameIt(name);
+  Object.assign(klass.prototype, component);
+  registerComponents(klass);
 };
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != void 0)
@@ -546,8 +552,8 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
 
 // src/d_render.js
 var run2 = () => {
-  if (!DRender2.observer) {
-    DRender2.observer = new MutationObserver((mutationsList, _observer) => {
+  if (!DRender.observer) {
+    DRender.observer = new MutationObserver((mutationsList, _observer) => {
       for (const mutation of mutationsList) {
         if (mutation.type === "childList") {
           mutation.addedNodes.forEach((node) => {
@@ -568,7 +574,7 @@ var run2 = () => {
         }
       }
     });
-    DRender2.observer.observe(document, { childList: true, subtree: true });
+    DRender.observer.observe(document, { childList: true, subtree: true });
     const addCSS = (css) => document.head.appendChild(document.createElement("style")).innerHTML = css;
     addCSS(".d-render-hidden { display: none }");
   }
@@ -579,9 +585,10 @@ var run2 = () => {
     component && component.render();
   });
 };
-var DRender2 = {
+var DRender = {
   run: run2,
   registerComponents,
+  defineComponent,
   Classes,
   Component,
   Hooks,
@@ -594,8 +601,10 @@ var DRender2 = {
   compileToFunc,
   compileWithComponent
 };
-var d_render_default = DRender2;
+var d_render_default = DRender;
 export {
-  d_render_default as default
+  d_render_default as default,
+  defineComponent,
+  registerComponents
 };
 //# sourceMappingURL=d_render.js.map

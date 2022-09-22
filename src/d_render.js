@@ -114,7 +114,7 @@
 //       d-after-initialized:
 //         Run only onnce after the component is initialized.
 
-import { Component, createComponent, Classes, registerComponents } from './component'
+import { Component, createComponent, Classes, registerComponents, defineComponent } from './component'
 import { isNil, debug, emitEvent, findInside, getAttribute, setAttribute, compileToFunc, compileWithComponent, querySelectorAll } from './util'
 import { Hooks } from './hooks'
 import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './hook_helpers'
@@ -161,6 +161,7 @@ const run = () => {
 const DRender = {
   run,
   registerComponents,
+  defineComponent,
   Classes,
   Component,
   Hooks,
@@ -175,3 +176,7 @@ const DRender = {
 }
 
 export default DRender
+export {
+  registerComponents,
+  defineComponent,
+}
