@@ -393,10 +393,14 @@ var Component = class {
       `;
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
+    deepMerge(state, this.addToInitialState(state));
     this.state = deepMerge({}, state);
     this.initialState = deepMerge({}, this.state);
     this.registerHooks();
     this.registerRefs();
+  }
+  addToInitialState(_state) {
+    return {};
   }
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {});
@@ -523,11 +527,11 @@ var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
   d_render_default.observer && run();
 };
-var defineComponent = (name, component) => {
+var defineComponent = (name, ...objs) => {
   const nameIt = (name2) => ({ [name2]: class extends Component {
   } })[name2];
   const klass = nameIt(name);
-  Object.assign(klass.prototype, component);
+  objs.forEach((obj) => Object.assign(klass.prototype, obj));
   registerComponents(klass);
 };
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {

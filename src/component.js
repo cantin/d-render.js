@@ -23,11 +23,17 @@ class Component {
       state = compileToFunc('context = {}', str).bind(this)(this.context)
     }
 
+    deepMerge(state, this.addToInitialState(state))
+
     this.state = deepMerge({}, state)
     this.initialState = deepMerge({}, this.state)
 
     this.registerHooks()
     this.registerRefs()
+  }
+
+  addToInitialState(_state) {
+    return {}
   }
 
   addEventListener(eventIdentifier, node, handler) {
@@ -213,10 +219,10 @@ const registerComponents = (...components) => {
   DRender.observer && run() // run again only if we've run it before
 }
 
-const defineComponent = (name, component) => {
+const defineComponent = (name, ...objs) => {
   const nameIt = (name) => ({[name] : class extends Component {}})[name];
   const klass = nameIt(name)
-  Object.assign(klass.prototype, component)
+  objs.forEach(obj => Object.assign(klass.prototype, obj))
   registerComponents(klass)
 }
 
