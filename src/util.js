@@ -88,9 +88,10 @@ const compileToFunc = (...args) => {
 }
 
 const getDescriptor = (obj, method) => {
-  let prototype = Object.getPrototypeOf(obj)
-  let descriptor = undefined
+  let descriptor = Object.getOwnPropertyDescriptor(obj, method)
+  if (descriptor) return descriptor
 
+  let prototype = Object.getPrototypeOf(obj)
   while(true) {
     descriptor = Object.getOwnPropertyDescriptor(prototype, method)
 

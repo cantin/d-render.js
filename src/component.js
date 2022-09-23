@@ -23,18 +23,16 @@ class Component {
       state = compileToFunc('context = {}', str).bind(this)(this.context)
     }
 
-    deepMerge(state, this.addToInitialState(state))
-
     this.state = deepMerge({}, state)
-    this.initialState = deepMerge({}, this.state)
-
+    this.addMixins()
     this.registerHooks()
     this.registerRefs()
+
+    this.initialState = deepMerge({}, this.state)
   }
 
-  addToInitialState(_state) {
-    return {}
-  }
+  // A lifecycle method for defineComponent to add mixins
+  addMixins() {}
 
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {})
@@ -53,6 +51,10 @@ class Component {
   // this.parent = this.parent
   // this.children = this.children
   afterInitialized() {
+    this.runAfterInitializedHook()
+  }
+
+  runAfterInitializedHook() {
     let hook = 'd-after-initialized'
     const func = (node) => {
       let str = getAttribute(node, hook).trim()
@@ -220,10 +222,23 @@ const registerComponents = (...components) => {
 }
 
 const defineComponent = (name, ...objs) => {
-  const nameIt = (name) => ({[name] : class extends Component {}})[name];
-  const klass = nameIt(name)
-  objs.forEach(obj => Object.assign(klass.prototype, obj))
-  registerComponents(klass)
+  const nameIt = (name) => ({[name] : class extends Component {
+    addMixins() {
+      let component = this
+      let func = typeof objs[objs.length - 1] == 'function' ? objs.pop() : null
+      func && objs.push(func(component))
+
+      let state = objs.reduce((state, obj) => deepMerge(state, obj.state), {})
+      let methods = objs.reduce((methods, obj) => {
+        let { state, ...rest } = obj
+        return { ...methods, ...rest }
+      }, {})
+
+      component.state = deepMerge(component.state, state)
+      Object.assign(component, methods)
+    }
+  }})[name];
+  registerComponents(nameIt(name))
 }
 
 // Create a component isntance and attach it to the element with key 'd-component'

@@ -69,8 +69,10 @@ var compileToFunc = (...args) => {
   }
 };
 var getDescriptor = (obj, method) => {
+  let descriptor = Object.getOwnPropertyDescriptor(obj, method);
+  if (descriptor)
+    return descriptor;
   let prototype = Object.getPrototypeOf(obj);
-  let descriptor = void 0;
   while (true) {
     descriptor = Object.getOwnPropertyDescriptor(prototype, method);
     if (descriptor != void 0 || prototype == Object.prototype) {
@@ -393,14 +395,13 @@ var Component = class {
       `;
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
-    deepMerge(state, this.addToInitialState(state));
     this.state = deepMerge({}, state);
-    this.initialState = deepMerge({}, this.state);
+    this.addMixins();
     this.registerHooks();
     this.registerRefs();
+    this.initialState = deepMerge({}, this.state);
   }
-  addToInitialState(_state) {
-    return {};
+  addMixins() {
   }
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {});
@@ -412,6 +413,9 @@ var Component = class {
     node.removeEventListener(eventIdentifier, handler);
   }
   afterInitialized() {
+    this.runAfterInitializedHook();
+  }
+  runAfterInitializedHook() {
     let hook = "d-after-initialized";
     const func = (node) => {
       let str = getAttribute(node, hook).trim();
@@ -529,10 +533,20 @@ var registerComponents = (...components) => {
 };
 var defineComponent = (name, ...objs) => {
   const nameIt = (name2) => ({ [name2]: class extends Component {
+    addMixins() {
+      let component = this;
+      let func = typeof objs[objs.length - 1] == "function" ? objs.pop() : null;
+      func && objs.push(func(component));
+      let state = objs.reduce((state2, obj) => deepMerge(state2, obj.state), {});
+      let methods = objs.reduce((methods2, obj) => {
+        let { state: state2, ...rest } = obj;
+        return { ...methods2, ...rest };
+      }, {});
+      component.state = deepMerge(component.state, state);
+      Object.assign(component, methods);
+    }
   } })[name2];
-  const klass = nameIt(name);
-  objs.forEach((obj) => Object.assign(klass.prototype, obj));
-  registerComponents(klass);
+  registerComponents(nameIt(name));
 };
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != void 0)
