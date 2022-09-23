@@ -396,12 +396,12 @@ var Component = class {
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
     this.state = deepMerge({}, state);
-    this.addMixins();
+    this.mixins();
     this.registerHooks();
     this.registerRefs();
     this.initialState = deepMerge({}, this.state);
   }
-  addMixins() {
+  mixins() {
   }
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {});
@@ -533,14 +533,13 @@ var registerComponents = (...components) => {
 };
 var defineComponent = (name, ...objs) => {
   const nameIt = (name2) => ({ [name2]: class extends Component {
-    addMixins() {
+    mixins() {
       let component = this;
-      let func = typeof objs[objs.length - 1] == "function" ? objs.pop() : null;
-      func && objs.push(func(component));
-      let state = objs.reduce((state2, obj) => deepMerge(state2, obj.state), {});
-      let methods = objs.reduce((methods2, obj) => {
+      let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
+      let state = computedObjs.reduce((state2, obj) => deepMerge(state2, obj.state), {});
+      let methods = computedObjs.reduce((properties, obj) => {
         let { state: state2, ...rest } = obj;
-        return { ...methods2, ...rest };
+        return { ...properties, ...rest };
       }, {});
       component.state = deepMerge(component.state, state);
       Object.assign(component, methods);

@@ -24,7 +24,7 @@ class Component {
     }
 
     this.state = deepMerge({}, state)
-    this.addMixins()
+    this.mixins()
     this.registerHooks()
     this.registerRefs()
 
@@ -32,7 +32,7 @@ class Component {
   }
 
   // A lifecycle method for defineComponent to add mixins
-  addMixins() {}
+  mixins() {}
 
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {})
@@ -223,15 +223,14 @@ const registerComponents = (...components) => {
 
 const defineComponent = (name, ...objs) => {
   const nameIt = (name) => ({[name] : class extends Component {
-    addMixins() {
+    mixins() {
       let component = this
-      let func = typeof objs[objs.length - 1] == 'function' ? objs.pop() : null
-      func && objs.push(func(component))
+      let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
 
-      let state = objs.reduce((state, obj) => deepMerge(state, obj.state), {})
-      let methods = objs.reduce((methods, obj) => {
+      let state = computedObjs.reduce((state, obj) => deepMerge(state, obj.state), {})
+      let methods = computedObjs.reduce((properties, obj) => {
         let { state, ...rest } = obj
-        return { ...methods, ...rest }
+        return { ...properties, ...rest }
       }, {})
 
       component.state = deepMerge(component.state, state)
