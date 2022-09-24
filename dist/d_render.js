@@ -148,7 +148,7 @@ var parents = (node, selector) => {
 var isTag = (node, selector) => node.matches(selector);
 var isNil = (obj) => obj === void 0 || obj === null;
 
-// src/hook_helpers.js
+// src/directive_helpers.js
 var collectPrefixes = (str) => {
   let prefixes = str.match(/^\.[^\s]+\s/);
   if (prefixes) {
@@ -208,8 +208,8 @@ var Prefixes = {
   })
 };
 
-// src/hooks.js
-var Hooks = {
+// src/directives.js
+var Directives = {
   "d-model": (component, node) => {
     let key = getAttribute(node, "d-model");
     let a = generateEventFunc("d-model", "input", `{ ${key}: event.target.value }`);
@@ -384,6 +384,7 @@ var Component = class {
     this.stateHooks = [];
     this.refs = {};
     this.eventsMap = {};
+    this._componentSpecificDirectives = {};
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
@@ -479,11 +480,11 @@ var Component = class {
       !debug.keepDirectives && removeAttribute(ele, "d-ref");
     });
   }
-  classSpecificHooks() {
+  componentSpecificDirectives() {
     return {};
   }
   registerHooks() {
-    Object.entries(Hooks).concat(Object.entries(this.classSpecificHooks())).forEach(([hook, func]) => {
+    Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives)).concat(Object.entries(this.componentSpecificDirectives())).forEach(([hook, func]) => {
       this.findTopLevel(`[${hook}]`).forEach((ele) => {
         func(this, ele);
       });
@@ -536,13 +537,20 @@ var defineComponent = (name, ...objs) => {
     mixins() {
       let component = this;
       let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
-      let state = computedObjs.reduce((state2, obj) => deepMerge(state2, obj.state), {});
-      let methods = computedObjs.reduce((properties, obj) => {
-        let { state: state2, ...rest } = obj;
-        return { ...properties, ...rest };
-      }, {});
-      component.state = deepMerge(component.state, state);
-      Object.assign(component, methods);
+      let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}, properties = {};
+      computedObjs.forEach((obj) => {
+        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {}, ...rest } = obj;
+        deepMerge(_state, state);
+        _renderHooks = _renderHooks.concat(renderHooks);
+        _stateHooks = _stateHooks.concat(stateHooks);
+        _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives };
+        properties = { ...properties, ...rest };
+      });
+      component.state = deepMerge(component.state, _state);
+      component.renderHooks = component.renderHooks.concat(_renderHooks);
+      component.stateHooks = component.stateHooks.concat(_stateHooks);
+      component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
+      Object.assign(component, properties);
     }
   } })[name2];
   registerComponents(nameIt(name));
@@ -608,7 +616,7 @@ var DRender = {
   defineComponent,
   Classes,
   Component,
-  Hooks,
+  Directives,
   Prefixes,
   createComponent,
   generateEventFunc,

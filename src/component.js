@@ -1,6 +1,32 @@
 import { debug, isNil, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent } from './util'
-import { Hooks } from './hooks'
+import { Directives } from './directives'
 import DRender from './d_render'
+
+
+// A component is an object contains a set of states + a set of hooks.
+// Each time the state got changed, the hooks will be executed to update the UI accordingly.
+//
+// State is a Hash which can contain arbitrary values
+//
+// Hook is a Hash with a specific form. Hook is compiled from directive which attached in the HTML element.
+// Hook could be either a state hook or a render hook. both of them follow the same form:
+//  {
+//    identifier: "The name of directive: e.g: d-model",
+//    value: "the original string of directive",
+//    node: "the node that directive attached to"
+//    hook: "the hook function which actually executed while state changed"
+//  }
+// State Hooks executes right after the state got changed. Render Hookss executes on the render function.
+//
+// There are two ways to define a component: One by using class inheritance, the other by using function defineComponent
+//
+// e.g:
+//   class TodoList extends DRender.Component {
+//     properties...
+//     methods...
+//   }
+//
+//   defineComponent('TodoList', { ...properties }, mixin1, mixin2, ...)
 
 class Component {
   constructor(element) {
@@ -9,6 +35,7 @@ class Component {
     this.stateHooks = []
     this.refs = {}
     this.eventsMap = {}
+    this._componentSpecificDirectives = {}
 
     let state = {}, str = getAttribute(element, 'd-state')
     // use return directly in case the values of state hash has ; inside
@@ -151,14 +178,16 @@ class Component {
     })
   }
 
-  // A method meant to be overridden in sub-class to provide class specific hooks
-  classSpecificHooks() {
+  // A method meant to be overridden in sub-class to provide class specific directives
+  componentSpecificDirectives() {
     return {}
   }
 
-  // Iterate Hooks to register hook to renderHooks and stateHooks
+  // Iterate Directives to register hook to renderHooks and stateHooks
   registerHooks() {
-    Object.entries(Hooks).concat(Object.entries(this.classSpecificHooks())).forEach(([hook, func]) => {
+    Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives))
+      .concat(Object.entries(this.componentSpecificDirectives()))
+      .forEach(([hook, func]) => {
       this.findTopLevel(`[${hook}]`).forEach((ele) => {
         func(this, ele)
       })
@@ -221,20 +250,66 @@ const registerComponents = (...components) => {
   DRender.observer && run() // run again only if we've run it before
 }
 
+
+// Define a component with multiple mixins for code re-use.
+//
+// Mixin could be either a object or a function.
+// Mixin function will be executed with the component instance as argument while component instance get initialized.
+// And its return value should be a object which will be treated as a Mixin Object.
+//
+// Mixin Object is a object contains arbitrary key-value pairs, which will be merged into the component instance.
+// There are four specific keys: state, renderHooks, stateHooks, componentSpecificDirectives.
+// Each of them will be deeply merged with or concat to the corresponding properties of the component instance.
+//
+// e.g:
+//
+// defineComponent('TodoList', (component) => {
+//  let counter = 0 // a counter in console log
+//
+//  return {
+//   // Define a state
+//   state: { displayed: true },
+//
+//   // log the counter on rendering
+//   renderHooks: [{ identifier: 'test', value: 'console.log(data)', node: null, hook: () => { console.log(data) } }),
+//
+//   // define a directive for this component instance
+//   componentSpecificDirectives: {
+//     'd-debug': (component, node) => {
+//       component.renderHooks.push([{ ... }])
+//     }
+//   },
+//
+//   // A click event handler
+//   handleClick() {
+//     counter++
+//     this.setState({ displayed: !displayed })
+//   }
+//  }
+// })
+//
 const defineComponent = (name, ...objs) => {
   const nameIt = (name) => ({[name] : class extends Component {
     mixins() {
       let component = this
       let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
 
-      let state = computedObjs.reduce((state, obj) => deepMerge(state, obj.state), {})
-      let methods = computedObjs.reduce((properties, obj) => {
-        let { state, ...rest } = obj
-        return { ...properties, ...rest }
-      }, {})
+      let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}, properties = {}
+      computedObjs.forEach(obj => {
+        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {}, ...rest } = obj
 
-      component.state = deepMerge(component.state, state)
-      Object.assign(component, methods)
+        deepMerge(_state, state)
+        _renderHooks = _renderHooks.concat(renderHooks)
+        _stateHooks = _stateHooks.concat(stateHooks)
+        _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives }
+        properties = { ...properties, ...rest }
+      })
+
+      component.state = deepMerge(component.state, _state)
+      component.renderHooks = component.renderHooks.concat(_renderHooks)
+      component.stateHooks = component.stateHooks.concat(_stateHooks)
+      component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
+      Object.assign(component, properties)
     }
   }})[name];
   registerComponents(nameIt(name))

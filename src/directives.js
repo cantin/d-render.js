@@ -1,11 +1,11 @@
-// Hooks: a constant object to hold the hook functions. Form: { [directive string]: hook function }.
+// Directives: a constant object to hold the hook functions. Form: { [directive string]: hook function }.
 //  The hook function gets executed in Component#registerHooks.
 //  Each of them registers a hook object either to the renderHooks which invoked in Component#render,
 //  or to the stateHooks which invoked in Component#setState
 //  The hook function takes two arguments: component, node.
 //
 //  e.g: add a d-debug directive to log the state
-//    Hooks['d-debug'] = (component, node) => {
+//    Directives['d-debug'] = (component, node) => {
 //    component.stateHooks.push({
 //      identifier: 'd-log',
 //      value: null,
@@ -14,11 +14,11 @@
 //    })
 //  }
 
-import { collectPrefixes, generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './hook_helpers'
+import { generateEventFunc, generateDirectiveFunc } from './directive_helpers'
 import { debug, isTag, deepMerge, compileWithComponent, getAttribute, setAttribute, removeAttribute, getData, setData } from './util'
 import { createComponent } from './component'
 
-const Hooks = {
+const Directives = {
   'd-model': (component, node) => {
     let key = getAttribute(node, 'd-model')
     let a = generateEventFunc('d-model', 'input', `{ ${key}: event.target.value }`)
@@ -200,4 +200,4 @@ const Hooks = {
   },
 }
 
-export { Hooks }
+export { Directives }

@@ -72,7 +72,7 @@
 //       Currently we have these directives:
 //         d-keyup, d-keypress, d-change, d-input, d-click, d-submit, d-focus, d-blur,
 //
-//       To add more HTML standard or custom events, see docs on Constant Hooks and Function generateEventFunc below.
+//       To add more HTML standard or custom events, see docs on Constant Directives and Function generateEventFunc below.
 //
 //     DOM Manipulation Directive:
 //       These directives manipulate DOM base on the result of the JS function.
@@ -89,7 +89,7 @@
 //       d-html: replace element innerHTML with result.
 //       d-prop: set the element properties based on the returned result hash
 //
-//       To add more directives, see docs on Constant Hooks and Function generateDirectiveFunc
+//       To add more directives, see docs on Constant Directives and Function generateDirectiveFunc
 //
 //     Misc Directive:
 //       d-model: Same as the Vue v-model, creates two ways binding.
@@ -115,9 +115,9 @@
 //         Run only onnce after the component is initialized.
 
 import { Component, createComponent, Classes, registerComponents, defineComponent } from './component'
-import { isNil, debug, emitEvent, findInside, getAttribute, setAttribute, compileToFunc, compileWithComponent, querySelectorAll } from './util'
-import { Hooks } from './hooks'
-import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './hook_helpers'
+import { debug, emitEvent, findInside, compileToFunc, compileWithComponent, querySelectorAll } from './util'
+import { Directives } from './directives'
+import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './directive_helpers'
 
 // Initialize components in view, and start the mutation observer to initialize new coming components
 const run = () => {
@@ -164,7 +164,7 @@ const DRender = {
   defineComponent,
   Classes,
   Component,
-  Hooks,
+  Directives,
   Prefixes,
   createComponent,
   generateEventFunc,
