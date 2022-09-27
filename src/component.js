@@ -1,4 +1,4 @@
-import { debug, isNil, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent } from './util'
+import { debug, isNil, extendObject, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent } from './util'
 import { Directives } from './directives'
 import DRender from './d_render'
 
@@ -144,12 +144,7 @@ class Component {
 
   // find the most upper children that matches selector
   findTopLevel(selector) {
-    let descendant
-    if (selector == '[d-loop]') {
-      descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`)
-    } else {
-      descendant = findInside(this.element, `[d-loop] ${selector}, [d-loop]${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`)
-    }
+    let descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`)
 
     let elements = findInside(this.element, selector).filter((ele) => !descendant.includes(ele))
     isTag(this.element, selector) && elements.unshift(this.element)
@@ -294,22 +289,22 @@ const defineComponent = (name, ...objs) => {
       let component = this
       let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
 
-      let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}, properties = {}
+      let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}
       computedObjs.forEach(obj => {
-        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {}, ...rest } = obj
+        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj
 
         deepMerge(_state, state)
         _renderHooks = _renderHooks.concat(renderHooks)
         _stateHooks = _stateHooks.concat(stateHooks)
         _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives }
-        properties = { ...properties, ...rest }
+
+        extendObject(component, obj, ['renderHooks', 'stateHooks', 'componentSpecificDirectives'])
       })
 
       component.state = deepMerge(component.state, _state)
       component.renderHooks = component.renderHooks.concat(_renderHooks)
       component.stateHooks = component.stateHooks.concat(_stateHooks)
       component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
-      Object.assign(component, properties)
     }
   }})[name];
   registerComponents(nameIt(name))

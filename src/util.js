@@ -180,6 +180,16 @@ const parents = (node, selector) => {
 const isTag = (node, selector) => node.matches(selector)
 const isNil = (obj) => obj === undefined || obj === null
 
+const extendObject = (source, obj, excludedKeys = []) => {
+  Object.entries(Object.getOwnPropertyDescriptors(obj)).forEach(([k, property]) => {
+    if (property.get || property.set) {
+      Object.defineProperty(source, k, { get: property.get, set: property.set })
+    } else {
+      Object.defineProperty(source, k, property)
+    }
+  })
+}
+
 export {
   debug,
   addReturnToScriptStr,
@@ -199,4 +209,5 @@ export {
   parents,
   isTag,
   isNil,
+  extendObject,
 }

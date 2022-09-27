@@ -147,6 +147,15 @@ var parents = (node, selector) => {
 };
 var isTag = (node, selector) => node.matches(selector);
 var isNil = (obj) => obj === void 0 || obj === null;
+var extendObject = (source, obj, excludedKeys = []) => {
+  Object.entries(Object.getOwnPropertyDescriptors(obj)).forEach(([k, property]) => {
+    if (property.get || property.set) {
+      Object.defineProperty(source, k, { get: property.get, set: property.set });
+    } else {
+      Object.defineProperty(source, k, property);
+    }
+  });
+};
 
 // src/directive_helpers.js
 var collectPrefixes = (str) => {
@@ -251,7 +260,8 @@ var Directives = {
       append(childComponentKey, context);
     });
     if (!debug.keepDirectives) {
-      removeAttribute(node, "d-loop d-loop-var");
+      removeAttribute(node, "d-loop");
+      removeAttribute(node, "d-loop-var");
       for (const child of node.children) {
         removeAttribute(child, "d-key");
       }
@@ -279,7 +289,7 @@ var Directives = {
         updated[k] == void 0 && childComponent.element.remove();
       });
     };
-    component.stateHooks.push({
+    component.renderHooks.push({
       identifier: "d-loop",
       value: loopStr,
       node,
@@ -348,6 +358,9 @@ var Directives = {
   }),
   "d-html": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
     isTag(node, "input, textarea") ? node.value = result : node.innerHTML = result;
+  }),
+  "d-value": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
+    node.value = result;
   }),
   "d-prop": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node[name] = state);
@@ -457,12 +470,7 @@ var Component = class {
     return findInside(this.element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
   }
   findTopLevel(selector) {
-    let descendant;
-    if (selector == "[d-loop]") {
-      descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
-    } else {
-      descendant = findInside(this.element, `[d-loop] ${selector}, [d-loop]${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
-    }
+    let descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
     let elements = findInside(this.element, selector).filter((ele) => !descendant.includes(ele));
     isTag(this.element, selector) && elements.unshift(this.element);
     return elements;
@@ -537,20 +545,19 @@ var defineComponent = (name, ...objs) => {
     mixins() {
       let component = this;
       let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
-      let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}, properties = {};
+      let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {};
       computedObjs.forEach((obj) => {
-        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {}, ...rest } = obj;
+        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj;
         deepMerge(_state, state);
         _renderHooks = _renderHooks.concat(renderHooks);
         _stateHooks = _stateHooks.concat(stateHooks);
         _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives };
-        properties = { ...properties, ...rest };
+        extendObject(component, obj, ["renderHooks", "stateHooks", "componentSpecificDirectives"]);
       });
       component.state = deepMerge(component.state, _state);
       component.renderHooks = component.renderHooks.concat(_renderHooks);
       component.stateHooks = component.stateHooks.concat(_stateHooks);
       component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
-      Object.assign(component, properties);
     }
   } })[name2];
   registerComponents(nameIt(name));

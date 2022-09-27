@@ -73,7 +73,8 @@ const Directives = {
     })
 
     if (!debug.keepDirectives) {
-      removeAttribute(node, 'd-loop d-loop-var')
+      removeAttribute(node, 'd-loop')
+      removeAttribute(node, 'd-loop-var')
       for (const child of node.children) { removeAttribute(child, 'd-key') }
     }
 
@@ -105,7 +106,7 @@ const Directives = {
       })
     }
 
-    component.stateHooks.push({
+    component.renderHooks.push({
       identifier: 'd-loop',
       value: loopStr,
       node,
@@ -172,6 +173,9 @@ const Directives = {
   }),
   'd-html': generateDirectiveFunc('d-html', null, (node, result, _component, _originalProp) => {
     isTag(node, 'input, textarea') ? (node.value = result) : (node.innerHTML = result)
+  }),
+  'd-value': generateDirectiveFunc('d-html', null, (node, result, _component, _originalProp) => {
+    node.value = result
   }),
   'd-prop': generateDirectiveFunc('d-prop', null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node[name] = state)
