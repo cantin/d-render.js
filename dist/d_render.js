@@ -359,7 +359,7 @@ var Directives = {
   "d-html": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
     isTag(node, "input, textarea") ? node.value = result : node.innerHTML = result;
   }),
-  "d-value": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
+  "d-value": generateDirectiveFunc("d-value", null, (node, result, _component, _originalProp) => {
     node.value = result;
   }),
   "d-prop": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
