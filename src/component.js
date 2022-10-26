@@ -51,7 +51,7 @@ class Component {
     }
 
     this.state = deepMerge({}, state)
-    this.mixins()
+    this.extendInstance()
     this.registerHooks()
     this.registerRefs()
 
@@ -59,7 +59,13 @@ class Component {
   }
 
   // A lifecycle method for defineComponent to add mixins
-  mixins() {}
+  extendInstance() {
+    extendComponentInstance(this, ...this.mixins())
+  }
+
+  mixins() {
+    return []
+  }
 
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {})
@@ -286,28 +292,31 @@ const registerComponents = (...components) => {
 const defineComponent = (name, ...objs) => {
   const nameIt = (name) => ({[name] : class extends Component {
     mixins() {
-      let component = this
-      let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
-
-      let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}
-      computedObjs.forEach(obj => {
-        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj
-
-        deepMerge(_state, state)
-        _renderHooks = _renderHooks.concat(renderHooks)
-        _stateHooks = _stateHooks.concat(stateHooks)
-        _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives }
-
-        extendObject(component, obj, ['renderHooks', 'stateHooks', 'componentSpecificDirectives'])
-      })
-
-      component.state = deepMerge(component.state, _state)
-      component.renderHooks = component.renderHooks.concat(_renderHooks)
-      component.stateHooks = component.stateHooks.concat(_stateHooks)
-      component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
+      return objs
     }
   }})[name];
   registerComponents(nameIt(name))
+}
+
+const extendComponentInstance = (component, ...objs) => {
+  let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
+
+  let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}
+  computedObjs.forEach(obj => {
+    let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj
+
+    deepMerge(_state, state)
+    _renderHooks = _renderHooks.concat(renderHooks)
+    _stateHooks = _stateHooks.concat(stateHooks)
+    _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives }
+
+    extendObject(component, obj, ['renderHooks', 'stateHooks', 'componentSpecificDirectives'])
+  })
+
+  component.state = deepMerge(component.state, _state)
+  component.renderHooks = component.renderHooks.concat(_renderHooks)
+  component.stateHooks = component.stateHooks.concat(_stateHooks)
+  component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
 }
 
 // Create a component isntance and attach it to the element with key 'd-component'
@@ -342,4 +351,4 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
   return component
 }
 
-export { Component, createComponent, Classes, registerComponents, defineComponent }
+export { Component, createComponent, Classes, registerComponents, defineComponent, extendComponentInstance }

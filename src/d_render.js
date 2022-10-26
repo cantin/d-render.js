@@ -114,7 +114,7 @@
 //       d-after-initialized:
 //         Run only onnce after the component is initialized.
 
-import { Component, createComponent, Classes, registerComponents, defineComponent } from './component'
+import { Component, createComponent, Classes, registerComponents, defineComponent, extendComponentInstance } from './component'
 import { debug, emitEvent, findInside, compileToFunc, compileWithComponent, querySelectorAll } from './util'
 import { Directives } from './directives'
 import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './directive_helpers'
@@ -177,6 +177,8 @@ const DRender = {
 
 export default DRender
 export {
+  Component,
+  extendComponentInstance,
   registerComponents,
   defineComponent,
 }

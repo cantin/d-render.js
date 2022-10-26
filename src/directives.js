@@ -21,13 +21,20 @@ import { createComponent } from './component'
 const Directives = {
   'd-model': (component, node) => {
     let key = getAttribute(node, 'd-model')
-    let a = generateEventFunc('d-model', 'input', `{ ${key}: event.target.value }`)
-    a(component, node)
+    let eventFunc = null, set = null
+    if (node.matches('input[type="checkbox"]')) {
+      eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.matches(":checked") }`)
+      set = () => node.checked = component.state[key]
+    } else {
+      eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.value }`)
+      set = () => node.value = component.state[key]
+    }
+    eventFunc(component, node)
     component.renderHooks.push({
       identifier: 'd-model',
       value: key,
       node,
-      hook: () => node.value = component.state[key]
+      hook: set
     })
   },
   'd-loop': (component, node) => {

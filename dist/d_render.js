@@ -221,13 +221,20 @@ var Prefixes = {
 var Directives = {
   "d-model": (component, node) => {
     let key = getAttribute(node, "d-model");
-    let a = generateEventFunc("d-model", "input", `{ ${key}: event.target.value }`);
-    a(component, node);
+    let eventFunc = null, set = null;
+    if (node.matches('input[type="checkbox"]')) {
+      eventFunc = generateEventFunc("d-model", "input", `{ ${key}: event.target.matches(":checked") }`);
+      set = () => node.checked = component.state[key];
+    } else {
+      eventFunc = generateEventFunc("d-model", "input", `{ ${key}: event.target.value }`);
+      set = () => node.value = component.state[key];
+    }
+    eventFunc(component, node);
     component.renderHooks.push({
       identifier: "d-model",
       value: key,
       node,
-      hook: () => node.value = component.state[key]
+      hook: set
     });
   },
   "d-loop": (component, node) => {
@@ -410,12 +417,16 @@ var Component = class {
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
     this.state = deepMerge({}, state);
-    this.mixins();
+    this.extendInstance();
     this.registerHooks();
     this.registerRefs();
     this.initialState = deepMerge({}, this.state);
   }
+  extendInstance() {
+    extendComponentInstance(this, ...this.mixins());
+  }
   mixins() {
+    return [];
   }
   addEventListener(eventIdentifier, node, handler) {
     !this.eventsMap[node] && (this.eventsMap[node] = {});
@@ -543,24 +554,26 @@ var registerComponents = (...components) => {
 var defineComponent = (name, ...objs) => {
   const nameIt = (name2) => ({ [name2]: class extends Component {
     mixins() {
-      let component = this;
-      let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
-      let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {};
-      computedObjs.forEach((obj) => {
-        let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj;
-        deepMerge(_state, state);
-        _renderHooks = _renderHooks.concat(renderHooks);
-        _stateHooks = _stateHooks.concat(stateHooks);
-        _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives };
-        extendObject(component, obj, ["renderHooks", "stateHooks", "componentSpecificDirectives"]);
-      });
-      component.state = deepMerge(component.state, _state);
-      component.renderHooks = component.renderHooks.concat(_renderHooks);
-      component.stateHooks = component.stateHooks.concat(_stateHooks);
-      component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
+      return objs;
     }
   } })[name2];
   registerComponents(nameIt(name));
+};
+var extendComponentInstance = (component, ...objs) => {
+  let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
+  let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {};
+  computedObjs.forEach((obj) => {
+    let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj;
+    deepMerge(_state, state);
+    _renderHooks = _renderHooks.concat(renderHooks);
+    _stateHooks = _stateHooks.concat(stateHooks);
+    _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives };
+    extendObject(component, obj, ["renderHooks", "stateHooks", "componentSpecificDirectives"]);
+  });
+  component.state = deepMerge(component.state, _state);
+  component.renderHooks = component.renderHooks.concat(_renderHooks);
+  component.stateHooks = component.stateHooks.concat(_stateHooks);
+  component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
 };
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != void 0)
@@ -635,8 +648,10 @@ var DRender = {
 };
 var d_render_default = DRender;
 export {
+  Component,
   d_render_default as default,
   defineComponent,
+  extendComponentInstance,
   registerComponents
 };
 //# sourceMappingURL=d_render.js.map
