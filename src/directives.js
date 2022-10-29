@@ -71,7 +71,7 @@ const Directives = {
     const append = (childComponentKey, context) => {
       let childNode = originalNode.cloneNode(true)
       node.appendChild(childNode)
-      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey }})
+      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey, parentComponent: component }})
     }
 
     iterate(loopFunc(component), (context) => {

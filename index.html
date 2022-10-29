@@ -27,7 +27,7 @@ DRender.defineComponent("Mail", {
 <input d-model='eventInput' name='event'>
 <label>Scheduled At</label>
 <input d-model='scheduleInput' name='schedule'>
-<input d-click='.prevent { eventInput: &#39;&#39;, scheduleInput: &#39;&#39;, items: items.concat([{ id: idCounter++, event: eventInput, scheduledAt: scheduleInput }]) }' d-disabled='scheduleInput == &#39;&#39; || eventInput == &#39;&#39;' type='submit' value='Submit'>
+<input d-click='.prevent { eventInput: &#39;&#39;, scheduleInput: &#39;&#39;, idCounter: idCounter + 1, items: items.concat([{ id: idCounter, event: eventInput, scheduledAt: scheduleInput }]) }' d-disabled='scheduleInput == &#39;&#39; || eventInput == &#39;&#39;' type='submit' value='Submit'>
 </form>
 </div>
 <div class='todo-list' d-loop='items' d-loop-var='item'>

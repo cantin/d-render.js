@@ -96,18 +96,37 @@ var compileWithComponent = (str, component, ...args) => {
     } else {
       str = addReturnToScriptStr(str);
     }
+    let words = unique(getWords(str));
+    let properties = getProperties(component);
+    let used = words.filter((word) => properties.includes(word));
     str = `
-        with(this) {
-          with(context) {
-            with (state) {
-              ${str}
-            }
-          }
-        }
+        let {${used}} = this;
+        ${used.map((prop) => `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`).join("\n")}
+        let {${Object.getOwnPropertyNames(component.context)}} = this.context;
+        let {${Object.getOwnPropertyNames(component.state)}} = this.state;
+        ${str}
       `;
     func = compileToFunc(...args, str).bind(component);
   }
   return func;
+};
+var unique = (arr) => arr.filter((v, i, a) => a.indexOf(v) === i);
+var getWords = (str) => {
+  let arr = [];
+  let regex = /\w+/g;
+  let match;
+  while ((match = regex.exec(str)) !== null) {
+    arr.push(match[0]);
+  }
+  return arr;
+};
+var getProperties = (obj) => {
+  let properties = /* @__PURE__ */ new Set();
+  let currentObj = obj;
+  do {
+    Object.getOwnPropertyNames(currentObj).map((item) => properties.add(item));
+  } while (currentObj = Object.getPrototypeOf(currentObj));
+  return [...properties];
 };
 var deepMerge = (obj, ...sources) => {
   for (let source of sources) {
@@ -260,7 +279,7 @@ var Directives = {
     const append = (childComponentKey, context) => {
       let childNode = originalNode.cloneNode(true);
       node.appendChild(childNode);
-      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey } });
+      return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey, parentComponent: component } });
     };
     iterate(loopFunc(component), (context) => {
       let childComponentKey = keyFunc(...Object.values(context));
@@ -414,11 +433,8 @@ var Component = class {
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
-        with(this) {
-          with(context) {
-            return ${str}
-          }
-        }
+        let {${Object.getOwnPropertyNames(this.context)}} = this.context;
+        return ${str}
       `;
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
@@ -589,7 +605,7 @@ var ShadowComponent = class extends Component {
     return proxyToParent(this);
   }
   get state() {
-    return this.parent ? this.parent.state : {};
+    return this.parent ? this.parent.state : this.context.parentComponent.state;
   }
   set state(state) {
     return {};

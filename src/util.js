@@ -122,18 +122,40 @@ const compileWithComponent = (str, component, ...args) => {
     } else {
       str = addReturnToScriptStr(str)
     }
+    let words = unique(getWords(str))
+    let properties = getProperties(component)
+    let used = words.filter(word => properties.includes(word))
     str = `
-        with(this) {
-          with(context) {
-            with (state) {
-              ${str}
-            }
-          }
-        }
+        let {${used}} = this;
+        ${used.map((prop) => `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`).join("\n")}
+        let {${Object.getOwnPropertyNames(component.context)}} = this.context;
+        let {${Object.getOwnPropertyNames(component.state)}} = this.state;
+        ${str}
       `
     func = compileToFunc(...args, str).bind(component)
   }
   return func
+}
+
+const unique = (arr) => arr.filter((v, i, a) => a.indexOf(v) === i);
+
+const getWords = (str) => {
+  let arr = []
+  let regex = /\w+/g
+  let match
+  while ((match = regex.exec(str)) !== null) {
+    arr.push(match[0])
+  }
+  return arr
+}
+
+const getProperties = (obj) => {
+  let properties = new Set()
+  let currentObj = obj
+  do {
+    Object.getOwnPropertyNames(currentObj).map(item => properties.add(item))
+  } while ((currentObj = Object.getPrototypeOf(currentObj)))
+  return [...properties]
 }
 
 const deepMerge = (obj, ...sources) => {

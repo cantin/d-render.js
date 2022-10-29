@@ -48,11 +48,8 @@ class Component {
     // use return directly in case the values of state hash has ; inside
     if (str) {
       str = `
-        with(this) {
-          with(context) {
-            return ${str}
-          }
-        }
+        let {${Object.getOwnPropertyNames(this.context)}} = this.context;
+        return ${str}
       `
       state = compileToFunc('context = {}', str).bind(this)(this.context)
     }
@@ -299,7 +296,7 @@ export class ShadowComponent extends Component {
   }
 
   get state() {
-    return this.parent ? this.parent.state : {}
+    return this.parent ? this.parent.state : this.context.parentComponent.state
   }
 
   set state(state) {
