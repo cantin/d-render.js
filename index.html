@@ -33,11 +33,11 @@ DRender.defineComponent("Mail", {
 <div class='todo-list' d-loop='items' d-loop-var='item'>
 <div d-key='itemIndex'>
 <div>
-<input d-change='this.parent.setState((state) =&gt; { state.items.find(_item =&gt; item.id === _item.id).completed = !item.completed; return state })' d-prop='{ checked: item.completed }' type='checkbox'>
+<input d-change='setState((state) =&gt; { state.items.find(_item =&gt; item.id === _item.id).completed = !item.completed; return state })' d-prop='{ checked: item.completed }' type='checkbox'>
 <span d-style='{ &#39;text-decoration&#39;: item.completed ? &#39;line-through&#39; : &#39;none&#39;}' d-text='item.event'></span>
 <span d-text='item.scheduledAt'></span>
 <span>
-<a d-click='this.parent.setState({ items: this.parent.state.items.filter(_item =&gt; item.id !== _item.id) })' href='javascript:void(0)'>Remove</a>
+<a d-click='{ items: items.filter(_item =&gt; item.id !== _item.id) }' href='javascript:void(0)'>Remove</a>
 </span>
 </div>
 </div>
@@ -62,9 +62,7 @@ Count
 <div d-show='visible'>This div will be shown while clicking the link below odd number of times.</div>
 <div d-portal='itemsExample'>
 <div>
-<a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>
-Pop Item from outside the component
-</a>
+<a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>Pop Item from inside another component</a>
 </div>
 </div>
 <div d-portal-name='itemsExample' d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>

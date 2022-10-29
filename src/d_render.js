@@ -147,7 +147,7 @@ const run = () => {
     DRender.observer.observe(document, { childList: true, subtree: true })
 
     const addCSS = css => document.head.appendChild(document.createElement("style")).innerHTML=css;
-    addCSS(".d-render-hidden { display: none }")
+    addCSS(".d-render-hidden { display: none !important}")
   }
 
   let descendant = querySelectorAll('[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')

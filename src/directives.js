@@ -48,7 +48,7 @@ const Directives = {
       loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`
 
     // The first child is always a d-component
-    !getAttribute(node.children[0], 'd-component') && setAttribute(node.children[0], 'd-component', '')
+    !getAttribute(node.children[0], 'd-component') && setAttribute(node.children[0], 'd-component', 'ShadowComponent')
 
     if (keyStr == undefined) {
       throw new Error("The root element inside d-loop must have d-key directive")

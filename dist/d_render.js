@@ -242,7 +242,7 @@ var Directives = {
       throw new Error("Must only have one root element inside the d-loop.");
     }
     let keyStr = getAttribute(node.children[0], "d-key"), loopStr = getAttribute(node, "d-loop"), varStr = getAttribute(node, "d-loop-var") || "loopItem", loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`;
-    !getAttribute(node.children[0], "d-component") && setAttribute(node.children[0], "d-component", "");
+    !getAttribute(node.children[0], "d-component") && setAttribute(node.children[0], "d-component", "ShadowComponent");
     if (keyStr == void 0) {
       throw new Error("The root element inside d-loop must have d-key directive");
     }
@@ -502,7 +502,6 @@ var Component = class {
   findTopLevel(selector) {
     let arr = [];
     [this.element, ...this.portalElements()].forEach((element) => {
-      console.log(element);
       arr = [...arr, ...this._findTopLevel(element, selector)];
     });
     return arr;
@@ -573,7 +572,33 @@ var Component = class {
     return par;
   }
 };
-var Classes = {};
+var proxyToParent = (Class) => {
+  return new Proxy(Class, {
+    get(obj, prop) {
+      if (Reflect.has(obj, prop)) {
+        return Reflect.get(obj, prop);
+      } else {
+        return Reflect.get(obj.parent, prop);
+      }
+    }
+  });
+};
+var ShadowComponent = class extends Component {
+  constructor(element) {
+    super(element);
+    return proxyToParent(this);
+  }
+  get state() {
+    return this.parent ? this.parent.state : {};
+  }
+  set state(state) {
+    return {};
+  }
+  setState(...args) {
+    return this.parent.setState(...args);
+  }
+};
+var Classes = { ShadowComponent };
 var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
   d_render_default.observer && run();
@@ -648,7 +673,7 @@ var run2 = () => {
     });
     DRender.observer.observe(document, { childList: true, subtree: true });
     const addCSS = (css) => document.head.appendChild(document.createElement("style")).innerHTML = css;
-    addCSS(".d-render-hidden { display: none }");
+    addCSS(".d-render-hidden { display: none !important}");
   }
   let descendant = querySelectorAll("[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
   let top = querySelectorAll("[d-state], [d-component]").filter((ele) => !descendant.includes(ele));

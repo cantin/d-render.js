@@ -277,7 +277,41 @@ class Component {
   }
 }
 
-const Classes = {}
+const proxyToParent = (Class) => {
+  return new Proxy(Class, {
+    get(obj, prop) {
+      if (Reflect.has(obj, prop)) {
+        return Reflect.get(obj, prop)
+      } else {
+        return Reflect.get(obj.parent, prop)
+      }
+    }
+  })
+}
+
+// ShadowComponent is used as the default component for d-loop
+// delegates everything to the parent, so that we may use
+// setState({ stateInParent: updates }) without prefix `this.parent`
+export class ShadowComponent extends Component {
+  constructor(element) {
+    super(element)
+    return proxyToParent(this)
+  }
+
+  get state() {
+    return this.parent ? this.parent.state : {}
+  }
+
+  set state(state) {
+    return {}
+  }
+
+  setState(...args) {
+    return this.parent.setState(...args)
+  }
+}
+
+const Classes = { ShadowComponent }
 const registerComponents = (...components) => {
   components.forEach(component => Classes[component.name] = component)
   DRender.observer && run() // run again only if we've run it before
