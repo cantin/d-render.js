@@ -37,6 +37,13 @@ class Component {
     this.eventsMap = {}
     this._componentSpecificDirectives = {}
 
+    if (getAttribute(this.element, 'd-alias')) {
+      this.alias = getAttribute(this.element, 'd-alias')
+      !debug.keepDirectives && removeAttribute(this.element, 'd-alias')
+    }
+    this.portal = getAttribute(this.element, 'd-portal-name') || this.constructor.name
+    !debug.keepDirectives && removeAttribute(this.element, 'd-portal-name')
+
     let state = {}, str = getAttribute(element, 'd-state')
     // use return directly in case the values of state hash has ; inside
     if (str) {
@@ -56,6 +63,7 @@ class Component {
     this.registerRefs()
 
     this.initialState = deepMerge({}, this.state)
+
   }
 
   // A lifecycle method for defineComponent to add mixins
@@ -137,23 +145,47 @@ class Component {
     }
   }
 
-  // find the most upper children that matches [d-component] or [d-state]
+  filterChildren(name) {
+    return this.children.filter(c => (c.constructor.name == name) || (c.alias == name))
+  }
+
+  portalElements() {
+    return document.querySelectorAll(`[d-portal="${this.portal}"]`)
+  }
+
   findChildrenElements({ includeElementInLoop = false } = {}) {
+    let arr = []
+    ;[this.element, ...this.portalElements()].forEach(element => {
+      arr = [...arr, ...this._findChildrenElements({ element, includeElementInLoop })]
+    })
+    return arr
+  }
+
+  // find the most upper children that matches [d-component] or [d-state]
+  _findChildrenElements({ element, includeElementInLoop = false } = {}) {
     let descendant = null
     if (includeElementInLoop) {
-      descendant = findInside(this.element, '[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
+      descendant = findInside(element, '[d-portal] [d-state], [d-portal] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
     } else {
-      descendant = findInside(this.element, '[d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
+      descendant = findInside(element, '[d-portal] [d-state], [d-portal] [d-component], [d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
     }
-    return findInside(this.element, '[d-state], [d-component]').filter((ele) => !descendant.includes(ele))
+    return findInside(element, '[d-state], [d-component]').filter((ele) => !descendant.includes(ele))
+  }
+
+  findTopLevel(selector) {
+    let arr = []
+    ;[this.element, ...this.portalElements()].forEach(element => {
+      arr = [...arr, ...this._findTopLevel(element, selector)]
+    })
+    return arr
   }
 
   // find the most upper children that matches selector
-  findTopLevel(selector) {
-    let descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`)
+  _findTopLevel(element, selector) {
+    let descendant = findInside(element, `[d-portal] ${selector}, [d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`)
 
-    let elements = findInside(this.element, selector).filter((ele) => !descendant.includes(ele))
-    isTag(this.element, selector) && elements.unshift(this.element)
+    let elements = findInside(element, selector).filter((ele) => !descendant.includes(ele))
+    isTag(element, selector) && elements.unshift(element)
 
     return elements
   }

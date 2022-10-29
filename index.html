@@ -18,7 +18,7 @@ DRender.defineComponent("Mail", {
 </script>
 </head>
 <body>
-<div d-after-initialized='this.toString(123)' d-component='Mail'></div>
+<div d-after-initialized='this.toString(&quot;Mail registered&quot;)' d-component='Mail'></div>
 <h3>A to-do list example</h3>
 <div d-state='{ items: [{ id: 0, event: &#39;Drink a cup of coffee.&#39;, scheduledAt: &#39;9:00 AM&#39;, completed: false }], eventInput: &#39;&#39;, scheduleInput: &#39;&#39;, idCounter: 1 }'>
 <div class='event-form'>
@@ -43,6 +43,13 @@ DRender.defineComponent("Mail", {
 </div>
 </div>
 </div>
+<div d-portal='itemsExample'>
+<div>
+<a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>
+Pop Item from outside the component
+</a>
+</div>
+</div>
 <h3>A misc example</h3>
 <div d-state='{ count: 0, visible: false }'>
 <a d-click='{ count: count + 1, visible: !visible }' href='javascript:void(0)'>
@@ -53,7 +60,14 @@ Count
 <span d-text='count'></span>
 </p>
 <div d-show='visible'>This div will be shown while clicking the link below odd number of times.</div>
-<div d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>
+<div d-portal='itemsExample'>
+<div>
+<a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>
+Pop Item from outside the component
+</a>
+</div>
+</div>
+<div d-portal-name='itemsExample' d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>
 <div d-html='`&lt;span style=&quot;color: rgba(0, 0, 0, 0.25)&quot;&gt;From Parent ${parent.state.count}&lt;span&gt;`'></div>
 <div d-loop='items' d-loop-var='item'>
 <div d-key='itemIndex'>

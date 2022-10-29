@@ -405,6 +405,12 @@ var Component = class {
     this.refs = {};
     this.eventsMap = {};
     this._componentSpecificDirectives = {};
+    if (getAttribute(this.element, "d-alias")) {
+      this.alias = getAttribute(this.element, "d-alias");
+      !debug.keepDirectives && removeAttribute(this.element, "d-alias");
+    }
+    this.portal = getAttribute(this.element, "d-portal-name") || this.constructor.name;
+    !debug.keepDirectives && removeAttribute(this.element, "d-portal-name");
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
@@ -471,19 +477,40 @@ var Component = class {
       return this.findChildrenElements({ includeElementInLoop: true }).map((e) => e._dComponent);
     }
   }
+  filterChildren(name) {
+    return this.children.filter((c) => c.constructor.name == name || c.alias == name);
+  }
+  portalElements() {
+    return document.querySelectorAll(`[d-portal="${this.portal}"]`);
+  }
   findChildrenElements({ includeElementInLoop = false } = {}) {
+    let arr = [];
+    [this.element, ...this.portalElements()].forEach((element) => {
+      arr = [...arr, ...this._findChildrenElements({ element, includeElementInLoop })];
+    });
+    return arr;
+  }
+  _findChildrenElements({ element, includeElementInLoop = false } = {}) {
     let descendant = null;
     if (includeElementInLoop) {
-      descendant = findInside(this.element, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+      descendant = findInside(element, "[d-portal] [d-state], [d-portal] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
     } else {
-      descendant = findInside(this.element, "[d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
+      descendant = findInside(element, "[d-portal] [d-state], [d-portal] [d-component], [d-loop] [d-state], [d-loop] [d-component], [d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
     }
-    return findInside(this.element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
+    return findInside(element, "[d-state], [d-component]").filter((ele) => !descendant.includes(ele));
   }
   findTopLevel(selector) {
-    let descendant = findInside(this.element, `[d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
-    let elements = findInside(this.element, selector).filter((ele) => !descendant.includes(ele));
-    isTag(this.element, selector) && elements.unshift(this.element);
+    let arr = [];
+    [this.element, ...this.portalElements()].forEach((element) => {
+      console.log(element);
+      arr = [...arr, ...this._findTopLevel(element, selector)];
+    });
+    return arr;
+  }
+  _findTopLevel(element, selector) {
+    let descendant = findInside(element, `[d-portal] ${selector}, [d-loop] ${selector}, [d-state] ${selector}, [d-state]${selector}, [d-component] ${selector}, [d-component]${selector}`);
+    let elements = findInside(element, selector).filter((ele) => !descendant.includes(ele));
+    isTag(element, selector) && elements.unshift(element);
     return elements;
   }
   registerRefs() {
