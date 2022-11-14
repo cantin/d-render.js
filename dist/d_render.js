@@ -614,7 +614,7 @@ var ShadowComponent = class extends Component {
     return this.parent.setState(...args);
   }
 };
-var Classes = { ShadowComponent };
+var Classes = { Component, ShadowComponent };
 var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
   d_render_default.observer && run();
