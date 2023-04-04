@@ -152,7 +152,7 @@ var getData2 = (node, name) => {
   }
 };
 var setData2 = (node, name, value) => node.dataset[name] = typeof value == "object" ? JSON.stringify(value) : value;
-var emitEvent = (node, event) => node.dispatchEvent(new Event(event));
+var emitEvent = (node, event) => node.dispatchEvent(new Event(event, { bubbles: true }));
 var findInside = (node, selector) => [...node.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
 var querySelectorAll = (selector) => [...document.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
 var parents = (node, selector) => {
