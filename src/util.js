@@ -183,7 +183,7 @@ const getData = (node, name) => {
   }
 }
 const setData = (node, name, value) => node.dataset[name] = (typeof value == 'object' ? JSON.stringify(value) : value)
-const emitEvent = (node, event) => node.dispatchEvent(new Event(event))
+const emitEvent = (node, event) => node.dispatchEvent(new Event(event, { bubbles: true }))
 
 // Prepend :scope to make it works like jQuery() and jQuery.find
 const findInside = (node, selector) => [...node.querySelectorAll(selector.split(",").map(se => `:scope ${se}`).join(", "))]

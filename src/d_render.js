@@ -52,6 +52,10 @@
 //         To use custom component, You first need to register the component to d_render via DRender.registerComponents
 //         e.g: <div d-component="Row"> means use Row to initialize the component for this div
 //
+//         registerComponents(class Row extends DRender.Component {
+//            // actions
+//         })
+//
 //     Event Directives:
 //       The directive value will be compiled to a JS function, and then registered to event listeners via `jQuery.on`.
 //       In the JS function, you can use reference "event" to get the event object.
