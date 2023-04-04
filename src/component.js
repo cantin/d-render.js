@@ -311,7 +311,7 @@ export class ShadowComponent extends Component {
 const Classes = { Component, ShadowComponent }
 const registerComponents = (...components) => {
   components.forEach(component => Classes[component.name] = component)
-  DRender.observer && run() // run again only if we've run it before
+  DRender.observer && DRender.run() // run again only if we've run it before
 }
 
 

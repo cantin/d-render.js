@@ -617,7 +617,7 @@ var ShadowComponent = class extends Component {
 var Classes = { Component, ShadowComponent };
 var registerComponents = (...components) => {
   components.forEach((component) => Classes[component.name] = component);
-  d_render_default.observer && run();
+  d_render_default.observer && d_render_default.run();
 };
 var defineComponent = (name, ...objs) => {
   const nameIt = (name2) => ({ [name2]: class extends Component {
@@ -664,7 +664,7 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
 };
 
 // src/d_render.js
-var run2 = () => {
+var run = () => {
   if (!DRender.observer) {
     DRender.observer = new MutationObserver((mutationsList, _observer) => {
       for (const mutation of mutationsList) {
@@ -699,7 +699,7 @@ var run2 = () => {
   });
 };
 var DRender = {
-  run: run2,
+  run,
   registerComponents,
   defineComponent,
   Classes,

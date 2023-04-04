@@ -15,6 +15,9 @@ DRender.defineComponent("Mail", {
     console.log(show)
   }
 })
+window.shuffleArray = function (array) {
+  return array.map(value => ({ value, sort: Math.random() })) .sort((a, b) => a.sort - b.sort) .map(({ value }) => value)
+}
 </script>
 </head>
 <body>
@@ -29,9 +32,12 @@ DRender.defineComponent("Mail", {
 <input d-model='scheduleInput' name='schedule'>
 <input d-click='.prevent { eventInput: &#39;&#39;, scheduleInput: &#39;&#39;, idCounter: idCounter + 1, items: items.concat([{ id: idCounter, event: eventInput, scheduledAt: scheduleInput }]) }' d-disabled='scheduleInput == &#39;&#39; || eventInput == &#39;&#39;' type='submit' value='Submit'>
 </form>
+<a d-click='{ items: shuffleArray(items) }' href='javascript:void(0)'>
+Shuffle to-do list
+</a>
 </div>
 <div class='todo-list' d-loop='items' d-loop-var='item'>
-<div d-key='itemIndex'>
+<div d-key='item.id'>
 <div>
 <input d-change='setState((state) =&gt; { state.items.find(_item =&gt; item.id === _item.id).completed = !item.completed; return state })' d-prop='{ checked: item.completed }' type='checkbox'>
 <span d-style='{ &#39;text-decoration&#39;: item.completed ? &#39;line-through&#39; : &#39;none&#39;}' d-text='item.event'></span>
