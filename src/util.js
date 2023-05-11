@@ -57,7 +57,7 @@ const compileToFunc = (...args) => {
 
   if (debug.logCompiledFuncExecutionError) {
     let str = args[args.length - 1]
-    let logStr = str.replaceAll('"', `\\\"`).replaceAll("\n", "\\n")
+    let logStr = JSON.stringify({ functionLiteral: str })
     str = `
       try {
         ${str}
