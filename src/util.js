@@ -63,7 +63,7 @@ const compileToFunc = (...args) => {
         ${str}
       } catch (e) {
         console.log("Error occurred when executing compiled function:")
-        console.log("${logStr}")
+        console.log(${logStr})
         throw e
       }
     `
