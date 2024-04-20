@@ -2,7 +2,7 @@
 
 const debug = {
   logAllFuncStr: false,
-  keepDirectives: false,
+  keepDirectives: true,
   logCompiledFuncExecutionError: true,
 }
 

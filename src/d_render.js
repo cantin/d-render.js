@@ -126,12 +126,26 @@ import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes 
 // Initialize components in view, and start the mutation observer to initialize new coming components
 const run = () => {
   if (!DRender.observer) {
+    function getParentWithComponentAttribute(element) {
+      let currentElement = element.parentElement
+      while (currentElement && currentElement !== document.body) {
+        if (currentElement._dComponent) {
+          return currentElement
+        }
+        currentElement = currentElement.parentElement;
+      }
+      return null; // If no parent element with the attribute is found
+    }
+
     DRender.observer = new MutationObserver((mutationsList, _observer) => {
       for(const mutation of mutationsList) {
         if (mutation.type === 'childList') {
           //mutation.addedNodes.forEach(node => node.nodeType == node.ELEMENT_NODE && console.log('added Node', node))
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
+              const parent = getParentWithComponentAttribute(node)
+              if (parent) parent._dComponent.renewFromMutation(node)
+              // console.log('added', node)
               if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
                 createComponent(node).render()
                 emitEvent(node, 'd-component-initialized-from-mutation')

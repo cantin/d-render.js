@@ -33,8 +33,7 @@ class Component {
     this.element = element
     this.renderHooks = []
     this.stateHooks = []
-    this.refs = {}
-    this.eventsMap = {}
+    this.eventsMap = []
     this._componentSpecificDirectives = {}
 
     if (getAttribute(this.element, 'd-alias')) {
@@ -57,10 +56,8 @@ class Component {
     this.state = deepMerge({}, state)
     this.extendInstance()
     this.registerHooks()
-    this.registerRefs()
 
     this.initialState = deepMerge({}, this.state)
-
   }
 
   // A lifecycle method for defineComponent to add mixins
@@ -73,13 +70,19 @@ class Component {
   }
 
   addEventListener(eventIdentifier, node, handler) {
-    !this.eventsMap[node] && (this.eventsMap[node] = {})
-    this.eventsMap[node][eventIdentifier] = handler
+    let map = this.eventsMap.find(arr => arr[0] == node)
+    if (!map) {
+      this.eventsMap.push([node, {}])
+      map = this.eventsMap.find(arr => arr[0] == node)
+    }
+    map[eventIdentifier] = handler
     node.addEventListener(eventIdentifier, handler)
   }
 
   removeEventListener(eventIdentifier, node) {
-    let handler = this.eventsMap[node][eventIdentifier]
+    let map = this.eventsMap.find(arr => arr[0] == node)
+    let handler = map[eventIdentifier]
+    delete map[eventIdentifier]
     node.removeEventListener(eventIdentifier, handler)
   }
 
@@ -150,6 +153,24 @@ class Component {
     return document.querySelectorAll(`[d-portal="${this.portal}"]`)
   }
 
+  renewFromMutation(node) {
+    const old = [...this.renderHooks]
+
+    // register the hooks that are newly added to the DOM
+    this.registerHooks(node)
+
+    // clear up the hooks that are removed from the DOM. we do it here because mutation removedNodes already removed from the DOM.
+    this.clearHooksWhoseNodeRemoved()
+
+    old.some((hook, i) => hook != this.renderHooks[i]) && this.render()
+  }
+
+  clearHooksWhoseNodeRemoved() {
+    this.renderHooks = this.renderHooks.filter(hook => document.contains(hook.node) )
+    this.stateHooks = this.stateHooks.filter(hook => document.contains(hook.node) )
+    this.eventsMap = this.eventsMap.filter(([node, _map]) => document.contains(node))
+  }
+
   findChildrenElements({ includeElementInLoop = false } = {}) {
     let arr = []
     ;[this.element, ...this.portalElements()].forEach(element => {
@@ -169,9 +190,10 @@ class Component {
     return findInside(element, '[d-state], [d-component]').filter((ele) => !descendant.includes(ele))
   }
 
-  findTopLevel(selector) {
-    let arr = []
-    ;[this.element, ...this.portalElements()].forEach(element => {
+  findTopLevel(selector, scopeElement) {
+    let arr = [];
+    const elements = scopeElement ? [scopeElement] : [this.element, ...this.portalElements()]
+    elements.forEach(element => {
       arr = [...arr, ...this._findTopLevel(element, selector)]
     })
     return arr
@@ -187,25 +209,33 @@ class Component {
     return elements
   }
 
-  // Assign d-ref to this.refs
+
+  // Dynamically get refs from the current component instance
   // e.g:
   //   directive d-ref: 'form' assign the current node to this.refs.form
   //
   //   d-ref: 'checkboxes[]' assign the current node to array this.refs.checkboxes
-  registerRefs() {
+  get refs() {
+    return this.findRefs()
+  }
+
+  findRefs() {
+    const refs = []
+
     this.findTopLevel('[d-ref]').forEach((ele) => {
       let name = getAttribute(ele, 'd-ref')
 
       if (name.slice(-2) == '[]') {
         name = name.slice(0, -2)
-        !this.refs[name] && (this.refs[name] = [])
-        this.refs[name].push(ele)
+        !refs[name] && (refs[name] = [])
+        refs[name].push(ele)
       } else {
-        this.refs[name] = ele
+        refs[name] = ele
       }
-
-      !debug.keepDirectives && removeAttribute(ele, 'd-ref')
+      // !debug.keepDirectives && removeAttribute(ele, 'd-ref')
     })
+
+    return refs
   }
 
   // A method meant to be overridden in sub-class to provide class specific directives
@@ -214,11 +244,11 @@ class Component {
   }
 
   // Iterate Directives to register hook to renderHooks and stateHooks
-  registerHooks() {
+  registerHooks(scopeNode = undefined) {
     Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives))
       .concat(Object.entries(this.componentSpecificDirectives()))
       .forEach(([hook, func]) => {
-      this.findTopLevel(`[${hook}]`).forEach((ele) => {
+      this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
         func(this, ele)
       })
     })
