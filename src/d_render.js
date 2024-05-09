@@ -143,13 +143,14 @@ const run = () => {
           //mutation.addedNodes.forEach(node => node.nodeType == node.ELEMENT_NODE && console.log('added Node', node))
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
-              const parent = getParentWithComponentAttribute(node)
-              if (parent) parent._dComponent.renewFromMutation(node)
               // console.log('added', node)
               if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
                 createComponent(node).render()
                 emitEvent(node, 'd-component-initialized-from-mutation')
               } else {
+                const parent = getParentWithComponentAttribute(node)
+                if (parent) parent._dComponent.renewFromMutation(node)
+
                 if (node.querySelectorAll('[d-component], [d-state]').length > 0) {
                   let descendant = findInside(node, '[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
                   let top = findInside(node, '[d-state], [d-component]').filter(ele => !descendant.includes(ele))

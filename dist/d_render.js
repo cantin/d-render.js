@@ -701,13 +701,13 @@ var run = () => {
         if (mutation.type === "childList") {
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
-              const parent = getParentWithComponentAttribute(node);
-              if (parent)
-                parent._dComponent.renewFromMutation(node);
               if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
                 createComponent(node).render();
                 emitEvent(node, "d-component-initialized-from-mutation");
               } else {
+                const parent = getParentWithComponentAttribute(node);
+                if (parent)
+                  parent._dComponent.renewFromMutation(node);
                 if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
                   let descendant2 = findInside(node, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
                   let top2 = findInside(node, "[d-state], [d-component]").filter((ele) => !descendant2.includes(ele));
@@ -755,3 +755,4 @@ export {
   extendComponentInstance,
   registerComponents
 };
+//# sourceMappingURL=d_render.js.map
