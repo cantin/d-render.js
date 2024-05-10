@@ -494,7 +494,7 @@ var Component = class {
     if (this._children) {
       return [...this._children];
     } else {
-      return this.findChildrenElements({ includeElementInLoop: true }).map((e) => e._dComponent);
+      return this.findChildrenElements({ includeElementInLoop: true }).filter((e) => e._dComponent).map((e) => e._dComponent);
     }
   }
   filterChildren(name) {

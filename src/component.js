@@ -141,7 +141,7 @@ class Component {
     if (this._children) {
       return [...this._children] //always return a new array in case someone modify the array using things like Array.prototype.reverse
     } else {
-      return this.findChildrenElements({ includeElementInLoop: true }).map(e => e._dComponent)
+      return this.findChildrenElements({ includeElementInLoop: true }).filter(e => e._dComponent).map(e => e._dComponent)
     }
   }
 
