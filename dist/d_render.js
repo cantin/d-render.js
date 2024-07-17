@@ -463,6 +463,8 @@ var Component = class {
     delete map[eventIdentifier];
     node.removeEventListener(eventIdentifier, handler);
   }
+  unmounted() {
+  }
   afterInitialized() {
     this.runAfterInitializedHook();
   }
@@ -715,6 +717,17 @@ var run = () => {
                   top2.forEach((node2) => emitEvent(node2, "d-component-initialized-from-mutation"));
                 }
               }
+              mutation.removedNodes.forEach((node2) => {
+                if (node2.nodeType === node2.ELEMENT_NODE) {
+                  if (node2.hasAttribute("d-component") || node2.hasAttribute("d-state")) {
+                    node2._DComponent && node2._DComponent.unmounted();
+                  }
+                  let elements = node2.querySelectorAll("[d-component], [d-state]");
+                  if (elements.length > 0) {
+                    elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted());
+                  }
+                }
+              });
             }
           });
         }
@@ -755,4 +768,3 @@ export {
   extendComponentInstance,
   registerComponents
 };
-//# sourceMappingURL=d_render.js.map

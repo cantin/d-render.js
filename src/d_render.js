@@ -158,6 +158,17 @@ const run = () => {
                   top.forEach((node) => emitEvent(node, 'd-component-initialized-from-mutation'))
                 }
               }
+              mutation.removedNodes.forEach((node) => {
+                if (node.nodeType === node.ELEMENT_NODE) {
+                  if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
+                    node._DComponent && node._DComponent.unmounted()
+                  }
+                  let elements = node.querySelectorAll('[d-component], [d-state]')
+                  if (elements.length > 0) {
+                    elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted())
+                  }
+                }
+              })
             }
           })
         }

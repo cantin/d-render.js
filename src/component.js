@@ -86,6 +86,10 @@ class Component {
     node.removeEventListener(eventIdentifier, handler)
   }
 
+  // A lifecycle hook to run cleanup code when component is unmounted (element removed from the DOM)
+  unmounted() {
+  }
+
   // A lifecycle hook to run d-after-initialized directive.
   // also it's for something after component initialized like caching the parent/children
   // e.g: cache the parent and children after initializing, so that each time calling parent/children won't do the search on the DOM tree.
