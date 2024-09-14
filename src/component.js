@@ -279,14 +279,25 @@ class Component {
     let newState = typeof state == 'function' ?  state(cloned) : this._mergeState(cloned, state)
 
     this.state = newState
-    debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(newState))
 
-    this.stateHooks.forEach(obj => obj.hook(prevState))
+    if (this._insideStateChanging) return
+
+    this.insideStateChanging(() => this.stateHooks.forEach(obj => obj.hook(prevState)))
+    debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(newState))
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition)
     triggerRendering && this.render(transition)
 
     return deepMerge({}, newState)
+  }
+
+  insideStateChanging(func) {
+    try {
+      this._insideStateChanging = true
+      func()
+    } finally {
+      this._insideStateChanging = false
+    }
   }
 
   // transition: a temporary flag to info render to do something only once when state changes from particular value to another.
