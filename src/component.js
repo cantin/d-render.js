@@ -311,6 +311,14 @@ class Component {
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
   }
 
+  debouncedRender() {
+    this._renderTimeout && clearTimeout(this._renderTimeout)
+    this._renderTimeout = setTimeout(() => {
+      this.render()
+      this._renderTimeout = null
+    }, 100)
+  }
+
   get root() {
     let par = this.parent
     while (true) {
@@ -353,8 +361,13 @@ class Component {
       }
     }
 
-    // Trigger a re-render
-    this.render()
+    this.deboundedHookUpdated(this.render.bind(this))
+  }
+
+
+  // Called after initializing the component and hooks are updated
+  hookUpdated() {
+    // meant to be overridden
   }
 
   addRenderHook(identifier, hook) {
@@ -377,7 +390,7 @@ class Component {
 
   cleanupRemovedNodes() {
     [this.renderHooks, this.stateHooks, this.eventMap].forEach(map => {
-      for (let [node, hooks] of map) {
+      for (let [node, _hooks] of map) {
         if (!this.element.contains(node)) {
           map.delete(node)
         }
@@ -392,7 +405,18 @@ class Component {
     this._cleanupTimeout = setTimeout(() => {
       this.cleanupRemovedNodes()
       this._cleanupTimeout = null
-    }, 500)
+    }, 100)
+  }
+
+  deboundedHookUpdated(func) {
+    if (this._hookUpdatedTimeout) {
+      clearTimeout(this._hookUpdatedTimeout);
+    }
+    this._hookUpdatedTimeout = setTimeout(() => {
+      this.hookUpdated()
+      func && func()
+      this._hookUpdatedTimeout = null
+    }, 50);
   }
 }
 
@@ -491,7 +515,7 @@ const extendComponentInstance = (component, ...objs) => {
     let { state = {}, renderHooks = new Map(), stateHooks = new Map(), componentSpecificDirectives = {} } = obj
 
     deepMerge(_state, state)
-    
+
     // Merge renderHooks
     renderHooks.forEach((value, key) => {
       if (!component.renderHooks.has(key)) {
@@ -545,6 +569,7 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
 
   component.runAfterInitializedHook()
   component.afterInitialized()
+  component.hookUpdated()
 
   if (!debug.keepDirectives) {
     getAttribute(node, 'd-state') && setAttribute(node, 'd-state', '')

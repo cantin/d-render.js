@@ -4,6 +4,7 @@ const debug = {
   logAllFuncStr: false,
   keepDirectives: true,
   logCompiledFuncExecutionError: true,
+  logAttributeChanges: false,
 }
 
 const addReturnToScriptStr = (str) => {

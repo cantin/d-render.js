@@ -2,7 +2,8 @@
 var debug = {
   logAllFuncStr: false,
   keepDirectives: true,
-  logCompiledFuncExecutionError: true
+  logCompiledFuncExecutionError: true,
+  logAttributeChanges: false
 };
 var addReturnToScriptStr = (str) => {
   let arr = str.split(";");
@@ -664,6 +665,13 @@ var Component = class {
     });
     this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
   }
+  debouncedRender() {
+    this._renderTimeout && clearTimeout(this._renderTimeout);
+    this._renderTimeout = setTimeout(() => {
+      this.render();
+      this._renderTimeout = null;
+    }, 100);
+  }
   get root() {
     let par = this.parent;
     while (true) {
@@ -694,7 +702,9 @@ var Component = class {
         directiveFunc(this, node);
       }
     }
-    this.render();
+    this.deboundedHookUpdated(this.render.bind(this));
+  }
+  hookUpdated() {
   }
   addRenderHook(identifier, hook) {
     let nodeHooks = this.renderHooks.get(hook.node);
@@ -714,7 +724,7 @@ var Component = class {
   }
   cleanupRemovedNodes() {
     [this.renderHooks, this.stateHooks, this.eventMap].forEach((map) => {
-      for (let [node, hooks] of map) {
+      for (let [node, _hooks] of map) {
         if (!this.element.contains(node)) {
           map.delete(node);
         }
@@ -728,7 +738,17 @@ var Component = class {
     this._cleanupTimeout = setTimeout(() => {
       this.cleanupRemovedNodes();
       this._cleanupTimeout = null;
-    }, 500);
+    }, 100);
+  }
+  deboundedHookUpdated(func) {
+    if (this._hookUpdatedTimeout) {
+      clearTimeout(this._hookUpdatedTimeout);
+    }
+    this._hookUpdatedTimeout = setTimeout(() => {
+      this.hookUpdated();
+      func && func();
+      this._hookUpdatedTimeout = null;
+    }, 50);
   }
 };
 var proxyToParent = (Class) => {
@@ -812,6 +832,7 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
   children.map((child) => createComponent(child, { context }));
   component.runAfterInitializedHook();
   component.afterInitialized();
+  component.hookUpdated();
   if (!debug.keepDirectives) {
     getAttribute(node, "d-state") && setAttribute(node, "d-state", "");
     getAttribute(node, "d-component") && setAttribute(node, "d-component", "");
@@ -875,9 +896,10 @@ var run = () => {
           const node = mutation.target;
           const attributeName = mutation.attributeName;
           if (attributeName == "d-state") {
+            const stateAttr = node.getAttribute("d-state");
+            debug.logAttributeChanges && console.log("d-state changed", stateAttr, node);
             const component = node._dComponent;
             if (component) {
-              const stateAttr = node.getAttribute("d-state");
               try {
                 const state = JSON.parse(stateAttr);
                 if (JSON.stringify(component.state) !== JSON.stringify(state)) {
@@ -888,6 +910,7 @@ var run = () => {
               }
             }
           } else if (attributeName.startsWith("d-")) {
+            debug.logAttributeChanges && console.log("attribute changed", attributeName, mutation.oldValue, node);
             if (node._dComponent) {
               node._dComponent.updateHook(attributeName, node);
             } else {

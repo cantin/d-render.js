@@ -185,9 +185,10 @@ const run = () => {
           const attributeName = mutation.attributeName
 
           if (attributeName == 'd-state') {
+            const stateAttr = node.getAttribute('d-state')
+            debug.logAttributeChanges && console.log('d-state changed', stateAttr, node)
             const component = node._dComponent
             if (component) {
-              const stateAttr = node.getAttribute('d-state')
               try {
                 const state = JSON.parse(stateAttr)
                 if (JSON.stringify(component.state) !== JSON.stringify(state)) {
@@ -198,6 +199,7 @@ const run = () => {
               }
             }
           } else if (attributeName.startsWith('d-')) {
+            debug.logAttributeChanges && console.log('attribute changed', attributeName, mutation.oldValue, node)
             if (node._dComponent) {
               node._dComponent.updateHook(attributeName, node)
             } else {
