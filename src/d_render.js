@@ -126,13 +126,13 @@ import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes 
 // Initialize components in view, and start the mutation observer to initialize new coming components
 const run = () => {
   if (!DRender.observer) {
-    function getParentWithComponentAttribute(element) {
+    function getParentComponent(element) {
       let currentElement = element.parentElement
       while (currentElement && currentElement !== document.body) {
         if (currentElement._dComponent) {
           return currentElement
         }
-        currentElement = currentElement.parentElement;
+        currentElement = currentElement.parentElement
       }
       return null; // If no parent element with the attribute is found
     }
@@ -148,7 +148,7 @@ const run = () => {
                 createComponent(node).render()
                 emitEvent(node, 'd-component-initialized-from-mutation')
               } else {
-                const parent = getParentWithComponentAttribute(node)
+                const parent = getParentComponent(node)
                 if (parent) parent._dComponent.renewFromMutation(node)
 
                 if (node.querySelectorAll('[d-component], [d-state]').length > 0) {
@@ -158,25 +158,68 @@ const run = () => {
                   top.forEach((node) => emitEvent(node, 'd-component-initialized-from-mutation'))
                 }
               }
-              mutation.removedNodes.forEach((node) => {
-                if (node.nodeType === node.ELEMENT_NODE) {
-                  if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
-                    node._DComponent && node._DComponent.unmounted()
-                  }
-                  let elements = node.querySelectorAll('[d-component], [d-state]')
-                  if (elements.length > 0) {
-                    elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted())
-                  }
-                }
-              })
             }
           })
+
+          mutation.removedNodes.forEach((node) => {
+            if (node.nodeType === node.ELEMENT_NODE) {
+              if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
+                node._DComponent && node._DComponent.unmounted()
+              }
+              let elements = node.querySelectorAll('[d-component], [d-state]')
+              if (elements.length > 0) {
+                elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted())
+              }
+
+              let parent = null
+              if (mutation.target.hasAttribute('d-component') || mutation.target.hasAttribute('d-state')) {
+                parent = mutation.target
+              } else {
+                parent = getParentComponent(mutation.target)
+              }
+              parent && parent._dComponent && parent._dComponent.debouncedCleanupRemovedNodes()
+            }
+          })
+        } else if (mutation.type === 'attributes') {
+          const node = mutation.target
+          const attributeName = mutation.attributeName
+
+          if (attributeName == 'd-state') {
+            const component = node._dComponent
+            if (component) {
+              const stateAttr = node.getAttribute('d-state')
+              try {
+                const state = JSON.parse(stateAttr)
+                if (JSON.stringify(component.state) !== JSON.stringify(state)) {
+                  component.setState(state)
+                }
+              } catch (e) {
+                console.error('Invalid JSON in d-state attribute:', stateAttr)
+              }
+            }
+          } else if (attributeName.startsWith('d-')) {
+            if (node._dComponent) {
+              node._dComponent.updateHook(attributeName, node)
+            } else {
+              const parentComponent = getParentComponent(node)
+              if (parentComponent) {
+                parentComponent._dComponent.updateHook(attributeName, node)
+              }
+            }
+          }
         }
       }
-    });
-    DRender.observer.observe(document, { childList: true, subtree: true })
+    })
 
-    const addCSS = css => document.head.appendChild(document.createElement("style")).innerHTML=css;
+    // Observe all attribute changes and childList changes
+    DRender.observer.observe(document, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true
+    })
+
+    const addCSS = css => document.head.appendChild(document.createElement("style")).innerHTML=css
     addCSS(".d-render-hidden { display: none !important}")
   }
 

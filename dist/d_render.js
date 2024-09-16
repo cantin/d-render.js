@@ -193,7 +193,7 @@ var generateEventFunc = (identifier, event, preDefinedStr = null) => {
     prefixes && prefixes.forEach((prefix) => {
       handler = Prefixes[prefix] ? Prefixes[prefix](handler, component, node, prefixes) : handler;
     });
-    component.addEventListener(event, node, handler);
+    component.addEventListener(identifier, event, node, handler);
     !debug.keepDirectives && removeAttribute(node, identifier);
   };
 };
@@ -210,7 +210,7 @@ var generateDirectiveFunc = (identifier, prop, callbackFunc) => {
     let str = getAttribute(node, identifier).trim();
     let resultFunc = compileWithComponent(str, component, "node", "transition");
     !debug.keepDirectives && removeAttribute(node, identifier);
-    component.renderHooks.push({
+    component.addRenderHook(identifier, {
       identifier,
       value: str,
       node,
@@ -249,7 +249,7 @@ var Directives = {
       set = () => node.value = component.state[key];
     }
     eventFunc(component, node);
-    component.renderHooks.push({
+    component.addRenderHook("d-model", {
       identifier: "d-model",
       value: key,
       node,
@@ -315,7 +315,7 @@ var Directives = {
         updated[k] == void 0 && childComponent.element.remove();
       });
     };
-    component.renderHooks.push({
+    component.addRenderHook("d-loop", {
       identifier: "d-loop",
       value: loopStr,
       node,
@@ -391,10 +391,13 @@ var Directives = {
   "d-prop": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node[name] = state);
   }),
+  "d-attr": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
+    Object.entries(result).forEach(([name, state]) => node.setAttribute(name, state));
+  }),
   "d-on-state-change": (component, node) => {
     let str = getAttribute(node, "d-on-state-change");
     let func = compileWithComponent(str, component, "node", "prevState");
-    component.stateHooks.push({
+    component.addStateHook("d-on-state-change", {
       identifier: "d-on-state-change",
       value: str,
       node,
@@ -405,7 +408,7 @@ var Directives = {
   "d-on-render": (component, node) => {
     let str = getAttribute(node, "d-on-render");
     let func = compileWithComponent(str, component, "node", "transition");
-    component.renderHooks.push({
+    component.addRenderHook("d-on-render", {
       identifier: "d-on-render",
       value: str,
       node,
@@ -419,10 +422,11 @@ var Directives = {
 var Component = class {
   constructor(element) {
     this.element = element;
-    this.renderHooks = [];
-    this.stateHooks = [];
-    this.eventsMap = [];
+    this.renderHooks = /* @__PURE__ */ new Map();
+    this.stateHooks = /* @__PURE__ */ new Map();
+    this.eventMap = /* @__PURE__ */ new Map();
     this._componentSpecificDirectives = {};
+    this._cleanupTimeout = null;
     if (getAttribute(this.element, "d-alias")) {
       this.alias = getAttribute(this.element, "d-alias");
       !debug.keepDirectives && removeAttribute(this.element, "d-alias");
@@ -432,7 +436,7 @@ var Component = class {
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
-        let {${Object.getOwnPropertyNames(this.context)}} = this.context;
+        let {${Object.getOwnPropertyNames(this.context)}} = this.context
         return ${str}
       `;
       state = compileToFunc("context = {}", str).bind(this)(this.context);
@@ -448,20 +452,23 @@ var Component = class {
   mixins() {
     return [];
   }
-  addEventListener(eventIdentifier, node, handler) {
-    let map = this.eventsMap.find((arr) => arr[0] == node);
-    if (!map) {
-      this.eventsMap.push([node, {}]);
-      map = this.eventsMap.find((arr) => arr[0] == node);
+  addEventListener(identifier, event, node, handler) {
+    let nodeEventMap = this.eventMap.get(node);
+    if (!nodeEventMap) {
+      nodeEventMap = /* @__PURE__ */ new Map();
+      this.eventMap.set(node, nodeEventMap);
     }
-    map[eventIdentifier] = handler;
-    node.addEventListener(eventIdentifier, handler);
+    this.removeEventListener(identifier, node);
+    nodeEventMap.set(identifier, { event, handler });
+    node.addEventListener(event, handler);
   }
-  removeEventListener(eventIdentifier, node) {
-    let map = this.eventsMap.find((arr) => arr[0] == node);
-    let handler = map[eventIdentifier];
-    delete map[eventIdentifier];
-    node.removeEventListener(eventIdentifier, handler);
+  removeEventListener(identifier, node) {
+    const nodeEventMap = this.eventMap.get(node);
+    if (nodeEventMap && nodeEventMap.has(identifier)) {
+      const { event, handler } = nodeEventMap.get(identifier);
+      node.removeEventListener(event, handler);
+      nodeEventMap.delete(identifier);
+    }
   }
   unmounted() {
   }
@@ -506,15 +513,9 @@ var Component = class {
     return document.querySelectorAll(`[d-portal="${this.portal}"]`);
   }
   renewFromMutation(node) {
-    const old = [...this.renderHooks];
-    this.registerHooks(node);
-    this.clearHooksWhoseNodeRemoved();
-    old.some((hook, i) => hook != this.renderHooks[i]) && this.render();
-  }
-  clearHooksWhoseNodeRemoved() {
-    this.renderHooks = this.renderHooks.filter((hook) => document.contains(hook.node));
-    this.stateHooks = this.stateHooks.filter((hook) => document.contains(hook.node));
-    this.eventsMap = this.eventsMap.filter(([node, _map]) => document.contains(node));
+    const hooksChanged = this.registerHooks(node);
+    this.debouncedCleanupRemovedNodes();
+    hooksChanged && this.render();
   }
   findChildrenElements({ includeElementInLoop = false } = {}) {
     let arr = [];
@@ -567,11 +568,14 @@ var Component = class {
     return {};
   }
   registerHooks(scopeNode = void 0) {
+    let updated = false;
     Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives)).concat(Object.entries(this.componentSpecificDirectives())).forEach(([hook, func]) => {
       this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
+        updated = true;
         func(this, ele);
       });
     });
+    return updated;
   }
   transistionOnStateChanging(prevState, state) {
     prevState == state;
@@ -588,14 +592,28 @@ var Component = class {
     let cloned = deepMerge({}, this.state);
     let newState = typeof state == "function" ? state(cloned) : this._mergeState(cloned, state);
     this.state = newState;
+    if (this._insideStateChanging)
+      return;
+    this.insideStateChanging(() => this.stateHooks.forEach((nodeHooks, _node) => {
+      nodeHooks.forEach((hook) => hook.hook(prevState));
+    }));
     debug.keepDirectives && setAttribute(this.element, "d-state", JSON.stringify(newState));
-    this.stateHooks.forEach((obj) => obj.hook(prevState));
     transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition);
     triggerRendering && this.render(transition);
     return deepMerge({}, newState);
   }
+  insideStateChanging(func) {
+    try {
+      this._insideStateChanging = true;
+      func();
+    } finally {
+      this._insideStateChanging = false;
+    }
+  }
   render(transition = {}) {
-    this.renderHooks.forEach((obj) => obj.hook(transition));
+    this.renderHooks.forEach((nodeHooks, _node) => {
+      nodeHooks.forEach((hook) => hook.hook(transition));
+    });
     this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
   }
   get root() {
@@ -608,6 +626,61 @@ var Component = class {
       }
     }
     return par;
+  }
+  updateHook(identifier, node) {
+    let nodeStateHooks = this.stateHooks.get(node);
+    let nodeRenderHooks = this.renderHooks.get(node);
+    if (nodeStateHooks) {
+      nodeStateHooks.delete(identifier);
+    }
+    if (nodeRenderHooks) {
+      nodeRenderHooks.delete(identifier);
+    }
+    this.removeEventListener(identifier, node);
+    if (node.hasAttribute(identifier)) {
+      let directiveFunc = Directives[identifier];
+      if (!directiveFunc) {
+        directiveFunc = this._componentSpecificDirectives[identifier] || this.componentSpecificDirectives()[identifier];
+      }
+      if (directiveFunc) {
+        directiveFunc(this, node);
+      }
+    }
+    this.render();
+  }
+  addRenderHook(identifier, hook) {
+    let nodeHooks = this.renderHooks.get(hook.node);
+    if (!nodeHooks) {
+      nodeHooks = /* @__PURE__ */ new Map();
+      this.renderHooks.set(hook.node, nodeHooks);
+    }
+    nodeHooks.set(identifier, hook);
+  }
+  addStateHook(identifier, hook) {
+    let nodeHooks = this.stateHooks.get(hook.node);
+    if (!nodeHooks) {
+      nodeHooks = /* @__PURE__ */ new Map();
+      this.stateHooks.set(hook.node, nodeHooks);
+    }
+    nodeHooks.set(identifier, hook);
+  }
+  cleanupRemovedNodes() {
+    [this.renderHooks, this.stateHooks, this.eventMap].forEach((map) => {
+      for (let [node, hooks] of map) {
+        if (!this.element.contains(node)) {
+          map.delete(node);
+        }
+      }
+    });
+  }
+  debouncedCleanupRemovedNodes() {
+    if (this._cleanupTimeout) {
+      clearTimeout(this._cleanupTimeout);
+    }
+    this._cleanupTimeout = setTimeout(() => {
+      this.cleanupRemovedNodes();
+      this._cleanupTimeout = null;
+    }, 500);
   }
 };
 var proxyToParent = (Class) => {
@@ -651,18 +724,30 @@ var defineComponent = (name, ...objs) => {
 };
 var extendComponentInstance = (component, ...objs) => {
   let computedObjs = objs.map((obj) => typeof obj === "function" ? obj(component) : obj);
-  let _state = {}, _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {};
+  let _state = {}, _componentSpecificDirectives = {};
   computedObjs.forEach((obj) => {
-    let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj;
+    let { state = {}, renderHooks = /* @__PURE__ */ new Map(), stateHooks = /* @__PURE__ */ new Map(), componentSpecificDirectives = {} } = obj;
     deepMerge(_state, state);
-    _renderHooks = _renderHooks.concat(renderHooks);
-    _stateHooks = _stateHooks.concat(stateHooks);
+    renderHooks.forEach((value, key) => {
+      if (!component.renderHooks.has(key)) {
+        component.renderHooks.set(key, /* @__PURE__ */ new Map());
+      }
+      value.forEach((hookValue, hookKey) => {
+        component.renderHooks.get(key).set(hookKey, hookValue);
+      });
+    });
+    stateHooks.forEach((value, key) => {
+      if (!component.stateHooks.has(key)) {
+        component.stateHooks.set(key, /* @__PURE__ */ new Map());
+      }
+      value.forEach((hookValue, hookKey) => {
+        component.stateHooks.get(key).set(hookKey, hookValue);
+      });
+    });
     _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives };
     extendObject(component, obj, ["renderHooks", "stateHooks", "componentSpecificDirectives"]);
   });
   component.state = deepMerge(component.state, _state);
-  component.renderHooks = component.renderHooks.concat(_renderHooks);
-  component.stateHooks = component.stateHooks.concat(_stateHooks);
   component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
 };
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
@@ -688,7 +773,7 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
 // src/d_render.js
 var run = () => {
   if (!DRender.observer) {
-    let getParentWithComponentAttribute = function(element) {
+    let getParentComponent = function(element) {
       let currentElement = element.parentElement;
       while (currentElement && currentElement !== document.body) {
         if (currentElement._dComponent) {
@@ -707,7 +792,7 @@ var run = () => {
                 createComponent(node).render();
                 emitEvent(node, "d-component-initialized-from-mutation");
               } else {
-                const parent = getParentWithComponentAttribute(node);
+                const parent = getParentComponent(node);
                 if (parent)
                   parent._dComponent.renewFromMutation(node);
                 if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
@@ -717,23 +802,61 @@ var run = () => {
                   top2.forEach((node2) => emitEvent(node2, "d-component-initialized-from-mutation"));
                 }
               }
-              mutation.removedNodes.forEach((node2) => {
-                if (node2.nodeType === node2.ELEMENT_NODE) {
-                  if (node2.hasAttribute("d-component") || node2.hasAttribute("d-state")) {
-                    node2._DComponent && node2._DComponent.unmounted();
-                  }
-                  let elements = node2.querySelectorAll("[d-component], [d-state]");
-                  if (elements.length > 0) {
-                    elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted());
-                  }
-                }
-              });
             }
           });
+          mutation.removedNodes.forEach((node) => {
+            if (node.nodeType === node.ELEMENT_NODE) {
+              if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
+                node._DComponent && node._DComponent.unmounted();
+              }
+              let elements = node.querySelectorAll("[d-component], [d-state]");
+              if (elements.length > 0) {
+                elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted());
+              }
+              let parent = null;
+              if (mutation.target.hasAttribute("d-component") || mutation.target.hasAttribute("d-state")) {
+                parent = mutation.target;
+              } else {
+                parent = getParentComponent(mutation.target);
+              }
+              parent && parent._dComponent && parent._dComponent.debouncedCleanupRemovedNodes();
+            }
+          });
+        } else if (mutation.type === "attributes") {
+          const node = mutation.target;
+          const attributeName = mutation.attributeName;
+          if (attributeName == "d-state") {
+            const component = node._dComponent;
+            if (component) {
+              const stateAttr = node.getAttribute("d-state");
+              try {
+                const state = JSON.parse(stateAttr);
+                if (JSON.stringify(component.state) !== JSON.stringify(state)) {
+                  component.setState(state);
+                }
+              } catch (e) {
+                console.error("Invalid JSON in d-state attribute:", stateAttr);
+              }
+            }
+          } else if (attributeName.startsWith("d-")) {
+            if (node._dComponent) {
+              node._dComponent.updateHook(attributeName, node);
+            } else {
+              const parentComponent = getParentComponent(node);
+              if (parentComponent) {
+                parentComponent._dComponent.updateHook(attributeName, node);
+              }
+            }
+          }
         }
       }
     });
-    DRender.observer.observe(document, { childList: true, subtree: true });
+    DRender.observer.observe(document, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true
+    });
     const addCSS = (css) => document.head.appendChild(document.createElement("style")).innerHTML = css;
     addCSS(".d-render-hidden { display: none !important}");
   }
@@ -768,3 +891,4 @@ export {
   extendComponentInstance,
   registerComponents
 };
+//# sourceMappingURL=d_render.js.map

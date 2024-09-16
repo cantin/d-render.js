@@ -1,13 +1,12 @@
 // Directives: a constant object to hold the hook functions. Form: { [directive string]: hook function }.
 //  The hook function gets executed in Component#registerHooks.
-//  Each of them registers a hook object either to the renderHooks which invoked in Component#render,
-//  or to the stateHooks which invoked in Component#setState
+//  Each of them registers a hook object either to the renderHooks or to the stateHooks
 //  The hook function takes two arguments: component, node.
 //
 //  e.g: add a d-debug directive to log the state
 //    Directives['d-debug'] = (component, node) => {
-//    component.stateHooks.push({
-//      identifier: 'd-log',
+//    component.addStateHook('d-debug', {
+//      identifier: 'd-debug',
 //      value: null,
 //      node,
 //      hook: () => console.log(component.state)
@@ -30,7 +29,7 @@ const Directives = {
       set = () => node.value = component.state[key]
     }
     eventFunc(component, node)
-    component.renderHooks.push({
+    component.addRenderHook('d-model', {
       identifier: 'd-model',
       value: key,
       node,
@@ -113,7 +112,7 @@ const Directives = {
       })
     }
 
-    component.renderHooks.push({
+    component.addRenderHook('d-loop', {
       identifier: 'd-loop',
       value: loopStr,
       node,
@@ -187,10 +186,13 @@ const Directives = {
   'd-prop': generateDirectiveFunc('d-prop', null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node[name] = state)
   }),
+  'd-attr': generateDirectiveFunc('d-prop', null, (node, result, _component, _originalProp) => {
+    Object.entries(result).forEach(([name, state]) => node.setAttribute(name, state))
+  }),
   'd-on-state-change': (component, node) => {
     let str = getAttribute(node, 'd-on-state-change')
     let func = compileWithComponent(str, component, 'node', 'prevState')
-    component.stateHooks.push({
+    component.addStateHook('d-on-state-change', {
       identifier: 'd-on-state-change',
       value: str,
       node,
@@ -201,14 +203,14 @@ const Directives = {
   'd-on-render': (component, node) => {
     let str = getAttribute(node, 'd-on-render')
     let func = compileWithComponent(str, component, 'node', 'transition')
-    component.renderHooks.push({
+    component.addRenderHook('d-on-render', {
       identifier: 'd-on-render',
       value: str,
       node,
       hook: (transition) => func(node, transition)
     })
     !debug.keepDirectives && removeAttribute(node, 'd-on-render')
-  },
+  }
 }
 
 export { Directives }

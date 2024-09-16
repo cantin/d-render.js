@@ -31,10 +31,11 @@ import DRender from './d_render'
 class Component {
   constructor(element) {
     this.element = element
-    this.renderHooks = []
-    this.stateHooks = []
-    this.eventsMap = []
+    this.renderHooks = new Map()
+    this.stateHooks = new Map()
+    this.eventMap = new Map()
     this._componentSpecificDirectives = {}
+    this._cleanupTimeout = null
 
     if (getAttribute(this.element, 'd-alias')) {
       this.alias = getAttribute(this.element, 'd-alias')
@@ -47,7 +48,7 @@ class Component {
     // use return directly in case the values of state hash has ; inside
     if (str) {
       str = `
-        let {${Object.getOwnPropertyNames(this.context)}} = this.context;
+        let {${Object.getOwnPropertyNames(this.context)}} = this.context
         return ${str}
       `
       state = compileToFunc('context = {}', str).bind(this)(this.context)
@@ -69,21 +70,27 @@ class Component {
     return []
   }
 
-  addEventListener(eventIdentifier, node, handler) {
-    let map = this.eventsMap.find(arr => arr[0] == node)
-    if (!map) {
-      this.eventsMap.push([node, {}])
-      map = this.eventsMap.find(arr => arr[0] == node)
+  addEventListener(identifier, event, node, handler) {
+    let nodeEventMap = this.eventMap.get(node)
+    if (!nodeEventMap) {
+      nodeEventMap = new Map()
+      this.eventMap.set(node, nodeEventMap)
     }
-    map[eventIdentifier] = handler
-    node.addEventListener(eventIdentifier, handler)
+
+    // Remove existing event listener if there is one
+    this.removeEventListener(identifier, node)
+
+    nodeEventMap.set(identifier, { event, handler })
+    node.addEventListener(event, handler)
   }
 
-  removeEventListener(eventIdentifier, node) {
-    let map = this.eventsMap.find(arr => arr[0] == node)
-    let handler = map[eventIdentifier]
-    delete map[eventIdentifier]
-    node.removeEventListener(eventIdentifier, handler)
+  removeEventListener(identifier, node) {
+    const nodeEventMap = this.eventMap.get(node)
+    if (nodeEventMap && nodeEventMap.has(identifier)) {
+      const { event, handler } = nodeEventMap.get(identifier)
+      node.removeEventListener(event, handler)
+      nodeEventMap.delete(identifier)
+    }
   }
 
   // A lifecycle hook to run cleanup code when component is unmounted (element removed from the DOM)
@@ -158,21 +165,12 @@ class Component {
   }
 
   renewFromMutation(node) {
-    const old = [...this.renderHooks]
+    // Register the hooks that are newly added to the DOM
+    const hooksChanged = this.registerHooks(node)
 
-    // register the hooks that are newly added to the DOM
-    this.registerHooks(node)
+    this.debouncedCleanupRemovedNodes()
 
-    // clear up the hooks that are removed from the DOM. we do it here because mutation removedNodes already removed from the DOM.
-    this.clearHooksWhoseNodeRemoved()
-
-    old.some((hook, i) => hook != this.renderHooks[i]) && this.render()
-  }
-
-  clearHooksWhoseNodeRemoved() {
-    this.renderHooks = this.renderHooks.filter(hook => document.contains(hook.node) )
-    this.stateHooks = this.stateHooks.filter(hook => document.contains(hook.node) )
-    this.eventsMap = this.eventsMap.filter(([node, _map]) => document.contains(node))
+    hooksChanged && this.render()
   }
 
   findChildrenElements({ includeElementInLoop = false } = {}) {
@@ -195,7 +193,7 @@ class Component {
   }
 
   findTopLevel(selector, scopeElement) {
-    let arr = [];
+    let arr = []
     const elements = scopeElement ? [scopeElement] : [this.element, ...this.portalElements()]
     elements.forEach(element => {
       arr = [...arr, ...this._findTopLevel(element, selector)]
@@ -249,13 +247,16 @@ class Component {
 
   // Iterate Directives to register hook to renderHooks and stateHooks
   registerHooks(scopeNode = undefined) {
+    let updated = false
     Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives))
       .concat(Object.entries(this.componentSpecificDirectives()))
       .forEach(([hook, func]) => {
       this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
+        updated = true
         func(this, ele)
       })
     })
+    return updated
   }
 
   transistionOnStateChanging(prevState, state) {
@@ -282,7 +283,9 @@ class Component {
 
     if (this._insideStateChanging) return
 
-    this.insideStateChanging(() => this.stateHooks.forEach(obj => obj.hook(prevState)))
+    this.insideStateChanging(() => this.stateHooks.forEach((nodeHooks, _node) => {
+      nodeHooks.forEach(hook => hook.hook(prevState))
+    }))
     debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(newState))
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition)
@@ -302,7 +305,9 @@ class Component {
 
   // transition: a temporary flag to info render to do something only once when state changes from particular value to another.
   render(transition = {}) {
-    this.renderHooks.forEach(obj => obj.hook(transition))
+    this.renderHooks.forEach((nodeHooks, _node) => {
+      nodeHooks.forEach(hook => hook.hook(transition))
+    })
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
   }
 
@@ -316,6 +321,78 @@ class Component {
       }
     }
     return par
+  }
+
+  updateHook(identifier, node) {
+    // Remove existing hooks for this attribute and node
+    let nodeStateHooks = this.stateHooks.get(node)
+    let nodeRenderHooks = this.renderHooks.get(node)
+
+    if (nodeStateHooks) {
+      nodeStateHooks.delete(identifier)
+    }
+
+    if (nodeRenderHooks) {
+      nodeRenderHooks.delete(identifier)
+    }
+
+    // Remove existing event listener if it exists
+    this.removeEventListener(identifier, node)
+
+    // If the attribute exists, add new hook or event listener
+    if (node.hasAttribute(identifier)) {
+      let directiveFunc = Directives[identifier]
+
+      // Check component-specific directives if not found in global Directives
+      if (!directiveFunc) {
+        directiveFunc = this._componentSpecificDirectives[identifier] || this.componentSpecificDirectives()[identifier]
+      }
+
+      if (directiveFunc) {
+        directiveFunc(this, node)
+      }
+    }
+
+    // Trigger a re-render
+    this.render()
+  }
+
+  addRenderHook(identifier, hook) {
+    let nodeHooks = this.renderHooks.get(hook.node)
+    if (!nodeHooks) {
+      nodeHooks = new Map()
+      this.renderHooks.set(hook.node, nodeHooks)
+    }
+    nodeHooks.set(identifier, hook)
+  }
+
+  addStateHook(identifier, hook) {
+    let nodeHooks = this.stateHooks.get(hook.node)
+    if (!nodeHooks) {
+      nodeHooks = new Map()
+      this.stateHooks.set(hook.node, nodeHooks)
+    }
+    nodeHooks.set(identifier, hook)
+  }
+
+  cleanupRemovedNodes() {
+    [this.renderHooks, this.stateHooks, this.eventMap].forEach(map => {
+      for (let [node, hooks] of map) {
+        if (!this.element.contains(node)) {
+          map.delete(node)
+        }
+      }
+    })
+  }
+
+  debouncedCleanupRemovedNodes() {
+    if (this._cleanupTimeout) {
+      clearTimeout(this._cleanupTimeout)
+    }
+    this._cleanupTimeout = setTimeout(() => {
+      this.cleanupRemovedNodes()
+      this._cleanupTimeout = null
+    }, 500)
   }
 }
 
@@ -402,28 +479,45 @@ const defineComponent = (name, ...objs) => {
     mixins() {
       return objs
     }
-  }})[name];
+  }})[name]
   registerComponents(nameIt(name))
 }
 
 const extendComponentInstance = (component, ...objs) => {
   let computedObjs = objs.map(obj => typeof obj === 'function' ? obj(component) : obj)
 
-  let _state = {} , _renderHooks = [], _stateHooks = [], _componentSpecificDirectives = {}
+  let _state = {}, _componentSpecificDirectives = {}
   computedObjs.forEach(obj => {
-    let { state = {}, renderHooks = [], stateHooks = [], componentSpecificDirectives = {} } = obj
+    let { state = {}, renderHooks = new Map(), stateHooks = new Map(), componentSpecificDirectives = {} } = obj
 
     deepMerge(_state, state)
-    _renderHooks = _renderHooks.concat(renderHooks)
-    _stateHooks = _stateHooks.concat(stateHooks)
+    
+    // Merge renderHooks
+    renderHooks.forEach((value, key) => {
+      if (!component.renderHooks.has(key)) {
+        component.renderHooks.set(key, new Map())
+      }
+      value.forEach((hookValue, hookKey) => {
+        component.renderHooks.get(key).set(hookKey, hookValue)
+      })
+    })
+
+    // Merge stateHooks
+    stateHooks.forEach((value, key) => {
+      if (!component.stateHooks.has(key)) {
+        component.stateHooks.set(key, new Map())
+      }
+      value.forEach((hookValue, hookKey) => {
+        component.stateHooks.get(key).set(hookKey, hookValue)
+      })
+    })
+
     _componentSpecificDirectives = { ..._componentSpecificDirectives, ...componentSpecificDirectives }
 
     extendObject(component, obj, ['renderHooks', 'stateHooks', 'componentSpecificDirectives'])
   })
 
   component.state = deepMerge(component.state, _state)
-  component.renderHooks = component.renderHooks.concat(_renderHooks)
-  component.stateHooks = component.stateHooks.concat(_stateHooks)
   component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
 }
 

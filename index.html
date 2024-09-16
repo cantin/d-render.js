@@ -90,5 +90,12 @@ Pop Item
 </div>
 </div>
 </div>
+<h3>Dynamic d-attribute example</h3>
+<div d-state='{ test: 1 }' id='dynamic-attribute-example'>
+<div d-text='test' id='plus'></div>
+<div d-text='test + 100'></div>
+<button onclick='document.getElementById(&#39;dynamic-attribute-example&#39;).setAttribute(&#39;d-state&#39;, JSON.stringify({ test: 2 }))'>Change d-state to 2</button>
+<button onclick='document.getElementById(&#39;plus&#39;).setAttribute(&#39;d-text&#39;, &#39;test + 200&#39;)'>Change d-text to x + 200</button>
+</div>
 </body>
 </html>

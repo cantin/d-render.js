@@ -30,7 +30,7 @@ const generateEventFunc = (identifier, event, preDefinedStr = null) => {
       handler = Prefixes[prefix] ? Prefixes[prefix](handler, component, node, prefixes) : handler
     })
 
-    component.addEventListener(event, node, handler)
+    component.addEventListener(identifier, event, node, handler)
     !debug.keepDirectives && removeAttribute(node, identifier)
   }
 }
@@ -58,7 +58,7 @@ const generateDirectiveFunc = (identifier, prop, callbackFunc) => {
     let resultFunc = compileWithComponent(str, component, 'node', 'transition')
 
     !debug.keepDirectives && removeAttribute(node, identifier)
-    component.renderHooks.push({
+    component.addRenderHook(identifier, {
       identifier,
       value: str,
       node,
