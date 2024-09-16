@@ -186,7 +186,7 @@ const Directives = {
   'd-prop': generateDirectiveFunc('d-prop', null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node[name] = state)
   }),
-  'd-attr': generateDirectiveFunc('d-prop', null, (node, result, _component, _originalProp) => {
+  'd-attr': generateDirectiveFunc('d-attr', null, (node, result, _component, _originalProp) => {
     Object.entries(result).forEach(([name, state]) => node.setAttribute(name, state))
   }),
   'd-on-state-change': (component, node) => {
