@@ -103,7 +103,7 @@ class Component {
   // this.parent = this.parent
   // this.children = this.children
   afterInitialized() {
-    this.runAfterInitializedHook()
+    // Meant to be overridden
   }
 
   runAfterInitializedHook() {
@@ -543,6 +543,7 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
   let children = component.findChildrenElements()
   children.map(child => createComponent(child, { context }))
 
+  component.runAfterInitializedHook()
   component.afterInitialized()
 
   if (!debug.keepDirectives) {

@@ -294,6 +294,9 @@ var Directives = {
     }
     const loopHook = () => {
       let results = loopFunc(component);
+      if (JSON.stringify(results) === node._lastLoopResults)
+        return;
+      node._lastLoopResults = JSON.stringify(results);
       let updated = {};
       let children = [...node.children].reduce((map, child) => {
         let component2 = child._dComponent;
@@ -331,7 +334,10 @@ var Directives = {
   "d-focus": generateEventFunc("d-focus", "focus"),
   "d-blur": generateEventFunc("d-blur", "blur"),
   "d-show": generateDirectiveFunc("d-show", null, (node, result, _component) => {
-    node.classList.toggle("d-render-hidden", !!!result);
+    const shouldHide = !!!result;
+    if (node.classList.contains("d-render-hidden") !== shouldHide) {
+      node.classList.toggle("d-render-hidden", shouldHide);
+    }
   }),
   "d-debounce-show": generateDirectiveFunc("d-debounce-show", null, (node, result, _component) => {
     let timer = parseInt(getData2(node, "dRenderDebounceShowTimer"));
@@ -347,9 +353,16 @@ var Directives = {
   }),
   "d-class": generateDirectiveFunc("d-class", "class", (node, result, _component, originalClassName) => {
     if (typeof result == "object") {
-      Object.entries(result).forEach(([name, state]) => node.classList.toggle(name, state));
+      Object.entries(result).forEach(([name, state]) => {
+        if (node.classList.contains(name) !== state) {
+          node.classList.toggle(name, state);
+        }
+      });
     } else {
-      node.className = `${originalClassName || ""} ${result}`;
+      const newClassName = `${originalClassName || ""} ${result}`.trim();
+      if (node.className !== newClassName) {
+        node.className = newClassName;
+      }
     }
   }),
   "d-debounce-class": generateDirectiveFunc("d-debounce-class", null, (node, result, _component) => {
@@ -371,28 +384,64 @@ var Directives = {
     setData2(node, "dRenderDebounceClass", timerHash);
   }),
   "d-style": generateDirectiveFunc("d-style", null, (node, result, _component) => {
-    Object.entries(result).forEach(([name, state]) => node.style[name] = state);
+    Object.entries(result).forEach(([name, value]) => {
+      if (node.style[name] !== value) {
+        node.style[name] = value;
+      }
+    });
   }),
   "d-disabled": generateDirectiveFunc("d-disabled", null, (node, result, _component) => {
-    node.disabled = !!result;
+    const shouldDisable = !!result;
+    if (node.disabled !== shouldDisable) {
+      node.disabled = shouldDisable;
+    }
   }),
   "d-readonly": generateDirectiveFunc("d-readonly", "readonly", (node, result, _component, _originalProp) => {
-    node.readOnly = !!result;
+    const shouldBeReadOnly = !!result;
+    if (node.readOnly !== shouldBeReadOnly) {
+      node.readOnly = shouldBeReadOnly;
+    }
   }),
   "d-text": generateDirectiveFunc("d-text", null, (node, result, _component, _originalProp) => {
-    isTag(node, "input, textarea") ? node.value = result : node.innerText = result;
+    if (isTag(node, "input, textarea")) {
+      if (node.value !== result) {
+        node.value = result;
+      }
+    } else {
+      if (node.innerText !== result) {
+        node.innerText = result;
+      }
+    }
   }),
   "d-html": generateDirectiveFunc("d-html", null, (node, result, _component, _originalProp) => {
-    isTag(node, "input, textarea") ? node.value = result : node.innerHTML = result;
+    if (isTag(node, "input, textarea")) {
+      if (node.value !== result) {
+        node.value = result;
+      }
+    } else {
+      if (node.innerHTML !== result) {
+        node.innerHTML = result;
+      }
+    }
   }),
   "d-value": generateDirectiveFunc("d-value", null, (node, result, _component, _originalProp) => {
-    node.value = result;
+    if (node.value !== result) {
+      node.value = result;
+    }
   }),
   "d-prop": generateDirectiveFunc("d-prop", null, (node, result, _component, _originalProp) => {
-    Object.entries(result).forEach(([name, state]) => node[name] = state);
+    Object.entries(result).forEach(([name, value]) => {
+      if (node[name] !== value) {
+        node[name] = value;
+      }
+    });
   }),
   "d-attr": generateDirectiveFunc("d-attr", null, (node, result, _component, _originalProp) => {
-    Object.entries(result).forEach(([name, state]) => node.setAttribute(name, state));
+    Object.entries(result).forEach(([name, value]) => {
+      if (node.getAttribute(name) !== value) {
+        node.setAttribute(name, value);
+      }
+    });
   }),
   "d-on-state-change": (component, node) => {
     let str = getAttribute(node, "d-on-state-change");
@@ -473,7 +522,6 @@ var Component = class {
   unmounted() {
   }
   afterInitialized() {
-    this.runAfterInitializedHook();
   }
   runAfterInitializedHook() {
     let hook = "d-after-initialized";
@@ -762,6 +810,7 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
   node._dComponent = component;
   let children = component.findChildrenElements();
   children.map((child) => createComponent(child, { context }));
+  component.runAfterInitializedHook();
   component.afterInitialized();
   if (!debug.keepDirectives) {
     getAttribute(node, "d-state") && setAttribute(node, "d-state", "");
