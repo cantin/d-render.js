@@ -286,12 +286,14 @@ class Component {
     this.insideStateChanging(() => this.stateHooks.forEach((nodeHooks, _node) => {
       nodeHooks.forEach(hook => hook.hook(prevState))
     }))
-    debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(newState))
 
-    transition = deepMerge(this.transistionOnStateChanging(prevState, newState), transition)
+    cloned = deepMerge({}, this.state)
+    debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(cloned))
+
+    transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition)
     triggerRendering && this.render(transition)
 
-    return deepMerge({}, newState)
+    return cloned
   }
 
   insideStateChanging(func) {
