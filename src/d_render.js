@@ -119,18 +119,24 @@
 //         Run only onnce after the component is initialized.
 
 import { Component, createComponent, Classes, registerComponents, defineComponent, extendComponentInstance } from './component'
-import { debug, emitEvent, findInside, compileToFunc, compileWithComponent, querySelectorAll } from './util'
+import { debug, emitEvent, findInside, compileToFunc, compileWithComponent, querySelectorAll, getAttribute } from './util'
 import { Directives } from './directives'
 import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './directive_helpers'
 
 // Initialize components in view, and start the mutation observer to initialize new coming components
 const run = () => {
   if (!DRender.observer) {
-    function getParentComponent(element) {
+    function getParentComponent(element, kebabName = null) {
       let currentElement = element.parentElement
       while (currentElement && currentElement !== document.body) {
         if (currentElement._dComponent) {
-          return currentElement
+          if (kebabName) {
+            if (currentElement._dComponent.kebabName == kebabName) {
+              return currentElement._dComponent
+            }
+          } else {
+            return currentElement._dComponent
+          }
         }
         currentElement = currentElement.parentElement
       }
@@ -149,7 +155,7 @@ const run = () => {
                 emitEvent(node, 'd-component-initialized-from-mutation')
               } else {
                 const parent = getParentComponent(node)
-                if (parent) parent._dComponent.renewFromMutation(node)
+                if (parent) parent.renewFromMutation(node)
 
                 if (node.querySelectorAll('[d-component], [d-state]').length > 0) {
                   let descendant = findInside(node, '[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
@@ -173,11 +179,11 @@ const run = () => {
 
               let parent = null
               if (mutation.target.hasAttribute('d-component') || mutation.target.hasAttribute('d-state')) {
-                parent = mutation.target
+                parent = mutation.target._dComponent
               } else {
                 parent = getParentComponent(mutation.target)
               }
-              parent && parent._dComponent && parent._dComponent.debouncedCleanupRemovedNodes()
+              parent && parent.debouncedCleanupRemovedNodes()
             }
           })
         } else if (mutation.type === 'attributes') {
@@ -204,10 +210,18 @@ const run = () => {
               node._dComponent.updateHook(attributeName, node)
             } else {
               const parentComponent = getParentComponent(node)
+
               if (parentComponent) {
-                parentComponent._dComponent.updateHook(attributeName, node)
+                parentComponent.updateHook(attributeName, node)
               }
             }
+
+            let linked = getAttribute(node, 'linked-components')
+            linked = linked ? JSON.parse(linked) : []
+            linked.forEach((kebabName) => {
+              const component = getParentComponent(node, kebabName)
+              component && component.updateHook(attributeName, node, true)
+            })
           }
         }
       }

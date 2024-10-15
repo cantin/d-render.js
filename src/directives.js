@@ -18,8 +18,8 @@ import { debug, isTag, deepMerge, compileWithComponent, getAttribute, setAttribu
 import { createComponent } from './component'
 
 const Directives = {
-  'd-model': (component, node) => {
-    let key = getAttribute(node, 'd-model')
+  'd-model': (component, node, directiveStr = null) => {
+    let key = directiveStr || getAttribute(node, 'd-model')
     let eventFunc = null, set = null
     if (node.matches('input[type="checkbox"]')) {
       eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.matches(":checked") }`)
@@ -259,7 +259,7 @@ const Directives = {
       hook: (transition) => func(node, transition)
     })
     !debug.keepDirectives && removeAttribute(node, 'd-on-render')
-  }
+  },
 }
 
 export { Directives }

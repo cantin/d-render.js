@@ -71,7 +71,7 @@ Count
 <a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>Pop Item from inside another component</a>
 </div>
 </div>
-<div d-portal-name='itemsExample' d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>
+<div d-name='itemsExample' d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>
 <div d-html='`&lt;span style=&quot;color: rgba(0, 0, 0, 0.25)&quot;&gt;From Parent ${parent.state.count}&lt;span&gt;`'></div>
 <div d-loop='items' d-loop-var='item'>
 <div d-key='itemIndex'>

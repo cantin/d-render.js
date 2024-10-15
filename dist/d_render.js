@@ -187,8 +187,8 @@ var collectPrefixes = (str) => {
   return [str, prefixes];
 };
 var generateEventFunc = (identifier, event, preDefinedStr = null) => {
-  return (component, node) => {
-    let originalStr = preDefinedStr ? preDefinedStr.trim() : getAttribute(node, identifier).trim();
+  return (component, node, directiveStr = null) => {
+    let originalStr = preDefinedStr ? preDefinedStr.trim() : directiveStr ? directiveStr : getAttribute(node, identifier).trim();
     let [str, prefixes] = collectPrefixes(originalStr);
     let handler = compileWithComponent(str, component, "event", (str2) => str2[0] == "{" ? `this.setState(${str2})` : str2);
     prefixes && prefixes.forEach((prefix) => {
@@ -206,11 +206,10 @@ var generatePrefixFunc = (func) => {
   };
 };
 var generateDirectiveFunc = (identifier, prop, callbackFunc) => {
-  return (component, node) => {
+  return (component, node, directiveStr = null) => {
     let originalProp = prop ? getAttribute(node, prop) : null;
-    let str = getAttribute(node, identifier).trim();
+    let str = directiveStr || getAttribute(node, identifier).trim();
     let resultFunc = compileWithComponent(str, component, "node", "transition");
-    !debug.keepDirectives && removeAttribute(node, identifier);
     component.addRenderHook(identifier, {
       identifier,
       value: str,
@@ -239,8 +238,8 @@ var Prefixes = {
 
 // src/directives.js
 var Directives = {
-  "d-model": (component, node) => {
-    let key = getAttribute(node, "d-model");
+  "d-model": (component, node, directiveStr = null) => {
+    let key = directiveStr || getAttribute(node, "d-model");
     let eventFunc = null, set = null;
     if (node.matches('input[type="checkbox"]')) {
       eventFunc = generateEventFunc("d-model", "input", `{ ${key}: event.target.matches(":checked") }`);
@@ -477,12 +476,9 @@ var Component = class {
     this.eventMap = /* @__PURE__ */ new Map();
     this._componentSpecificDirectives = {};
     this._cleanupTimeout = null;
-    if (getAttribute(this.element, "d-alias")) {
-      this.alias = getAttribute(this.element, "d-alias");
-      !debug.keepDirectives && removeAttribute(this.element, "d-alias");
-    }
-    this.portal = getAttribute(this.element, "d-portal-name") || this.constructor.name;
-    !debug.keepDirectives && removeAttribute(this.element, "d-portal-name");
+    this.name = getAttribute(this.element, "d-name") || this.constructor.name;
+    !debug.keepDirectives && removeAttribute(this.element, "d-name");
+    this.hasHooksInDescendants = getAttribute(this.element, "d-nested-directives") || false;
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
@@ -494,7 +490,38 @@ var Component = class {
     this.state = deepMerge({}, state);
     this.extendInstance();
     this.registerHooks();
+    this.hasHooksInDescendants && this.registerHooksInDescendants();
     this.initialState = deepMerge({}, this.state);
+  }
+  get kebabName() {
+    return this.name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  convertDescendantIdentifier(identifier) {
+    return identifier.replace(`d-${this.kebabName}-`, "d-");
+  }
+  registerHooksInDescendants() {
+    function getAttributesWithPrefix(element, prefix) {
+      const attributes = Array.from(element.attributes);
+      const matchingAttributes = attributes.filter((attr) => attr.name.startsWith(prefix));
+      const result = {};
+      matchingAttributes.forEach((attr) => {
+        result[attr.name] = attr.value;
+      });
+      return result;
+    }
+    this.element.querySelectorAll("*").forEach((node) => {
+      const attributes = getAttributesWithPrefix(node, `d-${this.kebabName}`);
+      if (Object.keys(attributes).length == 0)
+        return;
+      Object.entries(attributes).forEach(([key, value]) => {
+        const identifier = this.convertDescendantIdentifier(key);
+        const directiveFunc = this.allDirectives()[identifier];
+        directiveFunc && directiveFunc(this, node, value);
+      });
+      let linked = getAttribute(node, "linked-components");
+      linked = linked ? JSON.parse(linked) : [];
+      setAttribute(node, "linked-components", JSON.stringify([...linked, this.kebabName]));
+    });
   }
   extendInstance() {
     extendComponentInstance(this, ...this.mixins());
@@ -559,7 +586,7 @@ var Component = class {
     return this.children.filter((c) => c.constructor.name == name || c.alias == name);
   }
   portalElements() {
-    return document.querySelectorAll(`[d-portal="${this.portal}"]`);
+    return document.querySelectorAll(`[d-portal="${this.name}"]`);
   }
   renewFromMutation(node) {
     const hooksChanged = this.registerHooks(node);
@@ -611,14 +638,27 @@ var Component = class {
         refs[name] = ele;
       }
     });
+    this.element.querySelectorAll(`[d-${this.kebabName}-ref]`).forEach((ele) => {
+      let name = getAttribute(ele, `d-${this.kebabName}-ref`);
+      if (name.slice(-2) == "[]") {
+        name = name.slice(0, -2);
+        !refs[name] && (refs[name] = []);
+        refs[name].push(ele);
+      } else {
+        refs[name] = ele;
+      }
+    });
     return refs;
   }
   componentSpecificDirectives() {
     return {};
   }
+  allDirectives() {
+    return Object.assign({}, Directives, this._componentSpecificDirectives, this.componentSpecificDirectives());
+  }
   registerHooks(scopeNode = void 0) {
     let updated = false;
-    Object.entries(Directives).concat(Object.entries(this._componentSpecificDirectives)).concat(Object.entries(this.componentSpecificDirectives())).forEach(([hook, func]) => {
+    Object.entries(this.allDirectives()).forEach(([hook, func]) => {
       this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
         updated = true;
         func(this, ele);
@@ -684,7 +724,11 @@ var Component = class {
     }
     return par;
   }
-  updateHook(identifier, node) {
+  updateHook(identifier, node, inDescendant = false) {
+    const originalIdentifier = identifier;
+    if (inDescendant) {
+      identifier = this.convertDescendantIdentifier(identifier);
+    }
     let nodeStateHooks = this.stateHooks.get(node);
     let nodeRenderHooks = this.renderHooks.get(node);
     if (nodeStateHooks) {
@@ -694,13 +738,14 @@ var Component = class {
       nodeRenderHooks.delete(identifier);
     }
     this.removeEventListener(identifier, node);
-    if (node.hasAttribute(identifier)) {
-      let directiveFunc = Directives[identifier];
-      if (!directiveFunc) {
-        directiveFunc = this._componentSpecificDirectives[identifier] || this.componentSpecificDirectives()[identifier];
-      }
+    if (node.hasAttribute(originalIdentifier)) {
+      let directiveFunc = this.allDirectives()[identifier];
       if (directiveFunc) {
-        directiveFunc(this, node);
+        if (inDescendant) {
+          directiveFunc(this, node, getAttribute(node, originalIdentifier));
+        } else {
+          directiveFunc(this, node);
+        }
       }
     }
     this.deboundedHookUpdated(this.render.bind(this));
@@ -844,11 +889,17 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
 // src/d_render.js
 var run = () => {
   if (!DRender.observer) {
-    let getParentComponent = function(element) {
+    let getParentComponent = function(element, kebabName = null) {
       let currentElement = element.parentElement;
       while (currentElement && currentElement !== document.body) {
         if (currentElement._dComponent) {
-          return currentElement;
+          if (kebabName) {
+            if (currentElement._dComponent.kebabName == kebabName) {
+              return currentElement._dComponent;
+            }
+          } else {
+            return currentElement._dComponent;
+          }
         }
         currentElement = currentElement.parentElement;
       }
@@ -865,7 +916,7 @@ var run = () => {
               } else {
                 const parent = getParentComponent(node);
                 if (parent)
-                  parent._dComponent.renewFromMutation(node);
+                  parent.renewFromMutation(node);
                 if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
                   let descendant2 = findInside(node, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
                   let top2 = findInside(node, "[d-state], [d-component]").filter((ele) => !descendant2.includes(ele));
@@ -886,11 +937,11 @@ var run = () => {
               }
               let parent = null;
               if (mutation.target.hasAttribute("d-component") || mutation.target.hasAttribute("d-state")) {
-                parent = mutation.target;
+                parent = mutation.target._dComponent;
               } else {
                 parent = getParentComponent(mutation.target);
               }
-              parent && parent._dComponent && parent._dComponent.debouncedCleanupRemovedNodes();
+              parent && parent.debouncedCleanupRemovedNodes();
             }
           });
         } else if (mutation.type === "attributes") {
@@ -917,9 +968,15 @@ var run = () => {
             } else {
               const parentComponent = getParentComponent(node);
               if (parentComponent) {
-                parentComponent._dComponent.updateHook(attributeName, node);
+                parentComponent.updateHook(attributeName, node);
               }
             }
+            let linked = getAttribute(node, "linked-components");
+            linked = linked ? JSON.parse(linked) : [];
+            linked.forEach((kebabName) => {
+              const component = getParentComponent(node, kebabName);
+              component && component.updateHook(attributeName, node, true);
+            });
           }
         }
       }

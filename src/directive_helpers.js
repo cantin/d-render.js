@@ -21,8 +21,8 @@ const collectPrefixes = (str) => {
 //    If the directive value starts with "{", transform to "this.setState(${originalStr})" before compiling.
 //    If preDefinedStr is present, use it to compile the handle function.
 const generateEventFunc = (identifier, event, preDefinedStr = null) => {
-  return (component, node) => {
-    let originalStr = preDefinedStr ? preDefinedStr.trim() : getAttribute(node, identifier).trim()
+  return (component, node, directiveStr = null) => {
+    let originalStr = preDefinedStr ? preDefinedStr.trim() : (directiveStr ? directiveStr : getAttribute(node, identifier).trim())
     let [str, prefixes] = collectPrefixes(originalStr)
 
     let handler = compileWithComponent(str, component, 'event', (str) => str[0] == '{' ? `this.setState(${str})` : str)
@@ -52,12 +52,12 @@ const generatePrefixFunc = (func) => {
 //  It pushes a hook object with the callback function to Component#renderHooks
 //  When the hook gets invoked, the callback function updates DOM accordingly based on the return value of the result function.
 const generateDirectiveFunc = (identifier, prop, callbackFunc) => {
-  return (component, node) => {
+  return (component, node, directiveStr = null) => {
     let originalProp = prop ? getAttribute(node, prop) : null
-    let str = getAttribute(node, identifier).trim()
+    let str = directiveStr || getAttribute(node, identifier).trim()
     let resultFunc = compileWithComponent(str, component, 'node', 'transition')
 
-    !debug.keepDirectives && removeAttribute(node, identifier)
+    // !debug.keepDirectives && removeAttribute(node, identifier)
     component.addRenderHook(identifier, {
       identifier,
       value: str,
