@@ -354,7 +354,7 @@ var Directives = {
   "d-class": generateDirectiveFunc("d-class", "class", (node, result, _component, originalClassName) => {
     if (typeof result == "object") {
       Object.entries(result).forEach(([name, state]) => {
-        if (node.classList.contains(name) !== state) {
+        if (node.classList.contains(name) !== !!state) {
           node.classList.toggle(name, state);
         }
       });
@@ -1021,3 +1021,4 @@ export {
   extendComponentInstance,
   registerComponents
 };
+//# sourceMappingURL=d_render.js.map
