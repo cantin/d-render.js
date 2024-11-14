@@ -769,9 +769,10 @@ var Component = class {
     nodeHooks.set(identifier, hook);
   }
   cleanupRemovedNodes() {
+    const elements = [this.element, ...this.portalElements()];
     [this.renderHooks, this.stateHooks, this.eventMap].forEach((map) => {
       for (let [node, _hooks] of map) {
-        if (!this.element.contains(node)) {
+        if (!elements.some((ele) => ele.contains(node))) {
           map.delete(node);
         }
       }
@@ -1021,4 +1022,3 @@ export {
   extendComponentInstance,
   registerComponents
 };
-//# sourceMappingURL=d_render.js.map
