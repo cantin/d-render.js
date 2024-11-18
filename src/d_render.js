@@ -170,11 +170,11 @@ const run = () => {
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
               if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
-                node._DComponent && node._DComponent.unmounted()
+                node._dComponent && node._dComponent.unmounted()
               }
               let elements = node.querySelectorAll('[d-component], [d-state]')
               if (elements.length > 0) {
-                elements.forEach((ele) => ele._DComponent && ele._DComponent.unmounted())
+                elements.forEach((ele) => ele._dComponent && ele._dComponent.unmounted())
               }
 
               let parent = null
