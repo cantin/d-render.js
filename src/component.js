@@ -142,6 +142,16 @@ class Component {
   unmounted() {
   }
 
+  // run when the state of the component is changed
+  stateChanged(_prevState) {
+    // meant to be overridden
+  }
+
+  // run when children's state changed
+  childrenChanged(_child) {
+    // meant to be overridden
+  }
+
   // A lifecycle hook to run d-after-initialized directive.
   // also it's for something after component initialized like caching the parent/children
   // e.g: cache the parent and children after initializing, so that each time calling parent/children won't do the search on the DOM tree.
@@ -343,15 +353,21 @@ class Component {
 
     if (this._insideStateChanging) return
 
-    this.insideStateChanging(() => this.stateHooks.forEach((nodeHooks, _node) => {
-      nodeHooks.forEach(hook => hook.hook(prevState))
-    }))
+    this.insideStateChanging(() => {
+      this.stateHooks.forEach((nodeHooks, _node) => {
+        nodeHooks.forEach(hook => hook.hook(prevState))
+      })
+
+      this.stateChanged(prevState)
+    })
 
     cloned = deepMerge({}, this.state)
     debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(cloned))
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition)
     triggerRendering && this.render(transition)
+
+    this.parent && this.parent.childrenChanged(this)
 
     return cloned
   }

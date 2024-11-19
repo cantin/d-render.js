@@ -549,6 +549,10 @@ var Component = class {
   }
   unmounted() {
   }
+  stateChanged(_prevState) {
+  }
+  childrenChanged(_child) {
+  }
   afterInitialized() {
   }
   runAfterInitializedHook() {
@@ -683,13 +687,17 @@ var Component = class {
     this.state = newState;
     if (this._insideStateChanging)
       return;
-    this.insideStateChanging(() => this.stateHooks.forEach((nodeHooks, _node) => {
-      nodeHooks.forEach((hook) => hook.hook(prevState));
-    }));
+    this.insideStateChanging(() => {
+      this.stateHooks.forEach((nodeHooks, _node) => {
+        nodeHooks.forEach((hook) => hook.hook(prevState));
+      });
+      this.stateChanged(prevState);
+    });
     cloned = deepMerge({}, this.state);
     debug.keepDirectives && setAttribute(this.element, "d-state", JSON.stringify(cloned));
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition);
     triggerRendering && this.render(transition);
+    this.parent && this.parent.childrenChanged(this);
     return cloned;
   }
   insideStateChanging(func) {
