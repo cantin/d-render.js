@@ -40,7 +40,7 @@ Shuffle to-do list
 <div d-key='item.id'>
 <div>
 <input d-change='setState((state) =&gt; { state.items.find(_item =&gt; item.id === _item.id).completed = !item.completed; return state })' d-prop='{ checked: item.completed }' type='checkbox'>
-<span d-style='{ &#39;text-decoration&#39;: item.completed ? &#39;line-through&#39; : &#39;none&#39;}' d-text='item.event'></span>
+<span d-style='{ &#39;text-decoration&#39;: item.completed ? &#39;line-through&#39; : &#39;none&#39;}' d-text='if (typeof item == &quot;undefined&quot;) { debugger; }; item.event'></span>
 <span d-text='item.scheduledAt'></span>
 <span>
 <a d-click='{ items: items.filter(_item =&gt; item.id !== _item.id) }' href='javascript:void(0)'>Remove</a>
@@ -52,12 +52,18 @@ Shuffle to-do list
 <div d-portal='itemsExample'>
 <div>
 <a d-click='{ items: items.slice(0, -1) }' href='javascript:void(0)'>
-Pop Item from outside the component
+Pop Item from outside the component with portal
 </a>
 </div>
 </div>
+<div id='item-array-outside'>
+<a d-item-array-click='{ count: count + 1, visible: !visible }' href='javascript:void(0)'>
+Concat Item from outside the component with global directives
+</a>
+</div>
+<button onclick='this.parentNode.insertBefore(document.getElementById(&#39;item-array-outside&#39;).cloneNode(true), this)'>Clone the above div</button>
 <h3>A misc example</h3>
-<div d-state='{ count: 0, visible: false }'>
+<div d-global-directives='true' d-name='ItemArray' d-state='{ count: 0, visible: false }'>
 <a d-click='{ count: count + 1, visible: !visible }' href='javascript:void(0)'>
 Increase
 </a>

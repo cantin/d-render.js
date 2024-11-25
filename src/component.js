@@ -1,4 +1,4 @@
-import { debug, isNil, extendObject, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent } from './util'
+import { debug, isNil, extendObject, getAttribute, setAttribute, removeAttribute, deepMerge, findInside, isTag, parents, compileToFunc, compileWithComponent, getAttributesWithPrefix } from './util'
 import { Directives } from './directives'
 import DRender from './d_render'
 
@@ -37,14 +37,10 @@ class Component {
     this._componentSpecificDirectives = {}
     this._cleanupTimeout = null
 
-    // if (getAttribute(this.element, 'd-alias')) {
-      // this.alias = getAttribute(this.element, 'd-alias')
-      // !debug.keepDirectives && removeAttribute(this.element, 'd-alias')
-    // }
     this.name = getAttribute(this.element, 'd-name') || this.constructor.name
     !debug.keepDirectives && removeAttribute(this.element, 'd-name')
 
-    this.hasHooksInDescendants = getAttribute(this.element, 'd-nested-directives') || false
+    this.hasGlobalDirectives = getAttribute(this.element, 'd-global-directives') || false
 
     let state = {}, str = getAttribute(element, 'd-state')
     // use return directly in case the values of state hash has ; inside
@@ -56,54 +52,34 @@ class Component {
       state = compileToFunc('context = {}', str).bind(this)(this.context)
     }
 
+    state = deepMerge(this.defaultState(state), state)
     this.state = deepMerge({}, state)
     this.extendInstance()
     this.registerHooks()
-    this.hasHooksInDescendants && this.registerHooksInDescendants()
+    this.hasGlobalDirectives && this.registerGlobalHooks()
 
     this.initialState = deepMerge({}, this.state)
+  }
+
+  // meant to be overridden in subclass
+  defaultState(_state) {
+    return {}
   }
 
   get kebabName() {
     return this.name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
   }
 
-  convertDescendantIdentifier(identifier) {
+  get kebaPrefix() {
+    return `d-${this.kebabName}`
+  }
+
+  convertGlobalIdentifier(identifier) {
     return identifier.replace(`d-${this.kebabName}-`, 'd-')
   }
 
-  registerHooksInDescendants() {
-    function getAttributesWithPrefix(element, prefix) {
-      // Get all attributes of the element
-      const attributes = Array.from(element.attributes);
-
-      // Filter attributes that start with the specified prefix
-      const matchingAttributes = attributes.filter(attr => attr.name.startsWith(prefix));
-
-      // Create an object with attribute names and their corresponding values
-      const result = {};
-      matchingAttributes.forEach(attr => {
-        result[attr.name] = attr.value;
-      });
-
-      return result;
-    }
-
-    this.element.querySelectorAll("*").forEach((node) => {
-      const attributes = getAttributesWithPrefix(node, `d-${this.kebabName}`)
-
-      if (Object.keys(attributes).length == 0) return
-
-      Object.entries(attributes).forEach(([key, value]) => {
-        const identifier = this.convertDescendantIdentifier(key)
-        const directiveFunc = this.allDirectives()[identifier]
-        directiveFunc && directiveFunc(this, node, value)
-      })
-
-      let linked = getAttribute(node, 'linked-components')
-      linked = linked ? JSON.parse(linked) : []
-      setAttribute(node, 'linked-components', JSON.stringify([...linked, this.kebabName]))
-    })
+  get selectorForGlobalHooks() {
+    return Object.keys(this.allDirectives()).map(key => ':scope [' + key.replace(/^d-/, `d-${this.kebabName}-`) + ']').join(', ')
   }
 
   // A lifecycle method for defineComponent to add mixins
@@ -212,20 +188,28 @@ class Component {
   }
 
   filterChildren(name) {
-    return this.children.filter(c => (c.constructor.name == name) || (c.alias == name))
+    return this.children.filter(c => (c.name == name))
   }
 
   portalElements() {
     return document.querySelectorAll(`[d-portal="${this.name}"]`)
   }
 
-  renewFromMutation(node) {
+  renewHooksFromMutation(node) {
     // Register the hooks that are newly added to the DOM
-    const hooksChanged = this.registerHooks(node)
+    const hooksChanged = document.contains(node) ? this.registerHooks(node) : false
 
-    this.debouncedCleanupRemovedNodes()
+    this.debouncedCleanupRemovedNodes(hooksChanged)
 
-    hooksChanged && this.render()
+    return hooksChanged
+  }
+
+  renewGlobalHooksFromMutation(node) {
+    const hooksChanged = document.contains(node) ? this.registerGlobalHooks(node) : false
+
+    this.debouncedCleanupRemovedNodes(hooksChanged)
+
+    return hooksChanged
   }
 
   findChildrenElements({ includeElementInLoop = false } = {}) {
@@ -320,10 +304,24 @@ class Component {
   // Iterate Directives to register hook to renderHooks and stateHooks
   registerHooks(scopeNode = undefined) {
     let updated = false
-      Object.entries(this.allDirectives()).forEach(([hook, func]) => {
+      Object.entries(this.allDirectives()).forEach(([hook, _func]) => {
       this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
         updated = true
-        func(this, ele)
+        // func(this, ele)
+        this.updateHook(hook, ele)
+      })
+    })
+    return updated
+  }
+
+  registerGlobalHooks(scopeNode = undefined) {
+    scopeNode = scopeNode || document
+    let updated = false
+    scopeNode.querySelectorAll(this.selectorForGlobalHooks).forEach((node) => {
+      const attributes = getAttributesWithPrefix(node, this.kebaPrefix)
+      Object.entries(attributes).forEach(([key, _value]) => {
+        updated = true
+        this.updateGlobalHook(key, node)
       })
     })
     return updated
@@ -340,11 +338,11 @@ class Component {
 
   // A function to determine whether child components should re-render or not while parent get re-rendering.
   // meant to be overridden
-  shouldFollowRender(parent, transition) {
+  shouldFollowRender(_parent, _transition) {
     return true
   }
 
-  setState(state = {}, transition = {}, triggerRendering = true) {
+  setState(state = {}, transition = {}, triggerRendering = true, immediateRendering = false) {
     let prevState = this.state
     let cloned = deepMerge({}, this.state)
     let newState = typeof state == 'function' ?  state(cloned) : this._mergeState(cloned, state)
@@ -365,7 +363,7 @@ class Component {
     debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(cloned))
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition)
-    triggerRendering && this.render(transition)
+    triggerRendering && (immediateRendering ? this.render(transition) : this.debouncedRender(transition))
 
     this.parent && this.parent.childrenChanged(this)
 
@@ -389,12 +387,12 @@ class Component {
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
   }
 
-  debouncedRender() {
+  debouncedRender(transition = {}) {
     this._renderTimeout && clearTimeout(this._renderTimeout)
     this._renderTimeout = setTimeout(() => {
-      this.render()
+      this.render(transition)
       this._renderTimeout = null
-    }, 100)
+    }, 10)
   }
 
   get root() {
@@ -409,44 +407,36 @@ class Component {
     return par
   }
 
-  updateHook(identifier, node, inDescendant = false) {
-    const originalIdentifier = identifier
-
-    if (inDescendant) {
-      identifier = this.convertDescendantIdentifier(identifier)
-    }
-
+  _updateHook(identifier, node, value) {
     // Remove existing hooks for this attribute and node
     let nodeStateHooks = this.stateHooks.get(node)
     let nodeRenderHooks = this.renderHooks.get(node)
 
-    if (nodeStateHooks) {
-      nodeStateHooks.delete(identifier)
-    }
-
-    if (nodeRenderHooks) {
-      nodeRenderHooks.delete(identifier)
-    }
+    nodeStateHooks && nodeStateHooks.delete(identifier)
+    nodeRenderHooks && nodeRenderHooks.delete(identifier)
 
     // Remove existing event listener if it exists
     this.removeEventListener(identifier, node)
 
-
-    // If the attribute exists, add new hook or event listener
-    if (node.hasAttribute(originalIdentifier)) {
+    if (value) {
       let directiveFunc = this.allDirectives()[identifier]
-      if (directiveFunc) {
-        if (inDescendant) {
-          directiveFunc(this, node, getAttribute(node, originalIdentifier))
-        } else {
-          directiveFunc(this, node)
-        }
-      }
+      directiveFunc && directiveFunc(this, node, value)
     }
-
-    this.deboundedHookUpdated(this.render.bind(this))
   }
 
+  updateHook(identifier, node) {
+    const value = getAttribute(node, identifier)
+    this._updateHook(identifier, node, value)
+    this.debouncedHookUpdated()
+  }
+
+  updateGlobalHook(identifier, node) {
+    const value = getAttribute(node, identifier)
+    // convert d-{component}-identifier to d-identifier
+    const directiveIdentifier = this.convertGlobalIdentifier(identifier)
+    this._updateHook(directiveIdentifier, node, value)
+    this.debouncedHookUpdated()
+  }
 
   // Called after initializing the component and hooks are updated
   hookUpdated() {
@@ -472,36 +462,32 @@ class Component {
   }
 
   cleanupRemovedNodes() {
-    const elements = [this.element, ...this.portalElements()]
-
-    ;[this.renderHooks, this.stateHooks, this.eventMap].forEach(map => {
+    [this.renderHooks, this.stateHooks, this.eventMap].forEach(map => {
       for (let [node, _hooks] of map) {
-        if (!elements.some(ele => ele.contains(node))) {
+        if (!document.contains(node)) {
           map.delete(node)
         }
       }
     })
   }
 
-  debouncedCleanupRemovedNodes() {
-    if (this._cleanupTimeout) {
-      clearTimeout(this._cleanupTimeout)
-    }
+  debouncedCleanupRemovedNodes(triggerRendering = false) {
+    this._cleanupTimeout && clearTimeout(this._cleanupTimeout)
+
     this._cleanupTimeout = setTimeout(() => {
       this.cleanupRemovedNodes()
+      triggerRendering && this.render()
       this._cleanupTimeout = null
     }, 100)
   }
 
-  deboundedHookUpdated(func) {
-    if (this._hookUpdatedTimeout) {
-      clearTimeout(this._hookUpdatedTimeout);
-    }
+  debouncedHookUpdated(triggerRendering = true) {
+    this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout)
     this._hookUpdatedTimeout = setTimeout(() => {
       this.hookUpdated()
-      func && func()
+      triggerRendering && this.render()
       this._hookUpdatedTimeout = null
-    }, 50);
+    }, 100);
   }
 }
 
@@ -530,7 +516,7 @@ export class ShadowComponent extends Component {
     return this.parent ? this.parent.state : this.context.parentComponent.state
   }
 
-  set state(state) {
+  set state(_state) {
     return {}
   }
 

@@ -88,7 +88,7 @@ const Directives = {
       let results = loopFunc(component)
       if (JSON.stringify(results) === node._lastLoopResults) return;
       node._lastLoopResults = JSON.stringify(results);
-      
+
       let updated = {}
 
       let children = [...node.children].reduce((map, child) => {

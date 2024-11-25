@@ -176,6 +176,15 @@ var extendObject = (source, obj, excludedKeys = []) => {
     }
   });
 };
+var getAttributesWithPrefix = (element, prefix) => {
+  const attributes = Array.from(element.attributes);
+  const matchingAttributes = attributes.filter((attr) => attr.name.startsWith(prefix));
+  const result = {};
+  matchingAttributes.forEach((attr) => {
+    result[attr.name] = attr.value;
+  });
+  return result;
+};
 
 // src/directive_helpers.js
 var collectPrefixes = (str) => {
@@ -478,7 +487,7 @@ var Component = class {
     this._cleanupTimeout = null;
     this.name = getAttribute(this.element, "d-name") || this.constructor.name;
     !debug.keepDirectives && removeAttribute(this.element, "d-name");
-    this.hasHooksInDescendants = getAttribute(this.element, "d-nested-directives") || false;
+    this.hasGlobalDirectives = getAttribute(this.element, "d-global-directives") || false;
     let state = {}, str = getAttribute(element, "d-state");
     if (str) {
       str = `
@@ -487,41 +496,27 @@ var Component = class {
       `;
       state = compileToFunc("context = {}", str).bind(this)(this.context);
     }
+    state = deepMerge(this.defaultState(state), state);
     this.state = deepMerge({}, state);
     this.extendInstance();
     this.registerHooks();
-    this.hasHooksInDescendants && this.registerHooksInDescendants();
+    this.hasGlobalDirectives && this.registerGlobalHooks();
     this.initialState = deepMerge({}, this.state);
+  }
+  defaultState(_state) {
+    return {};
   }
   get kebabName() {
     return this.name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
   }
-  convertDescendantIdentifier(identifier) {
+  get kebaPrefix() {
+    return `d-${this.kebabName}`;
+  }
+  convertGlobalIdentifier(identifier) {
     return identifier.replace(`d-${this.kebabName}-`, "d-");
   }
-  registerHooksInDescendants() {
-    function getAttributesWithPrefix(element, prefix) {
-      const attributes = Array.from(element.attributes);
-      const matchingAttributes = attributes.filter((attr) => attr.name.startsWith(prefix));
-      const result = {};
-      matchingAttributes.forEach((attr) => {
-        result[attr.name] = attr.value;
-      });
-      return result;
-    }
-    this.element.querySelectorAll("*").forEach((node) => {
-      const attributes = getAttributesWithPrefix(node, `d-${this.kebabName}`);
-      if (Object.keys(attributes).length == 0)
-        return;
-      Object.entries(attributes).forEach(([key, value]) => {
-        const identifier = this.convertDescendantIdentifier(key);
-        const directiveFunc = this.allDirectives()[identifier];
-        directiveFunc && directiveFunc(this, node, value);
-      });
-      let linked = getAttribute(node, "linked-components");
-      linked = linked ? JSON.parse(linked) : [];
-      setAttribute(node, "linked-components", JSON.stringify([...linked, this.kebabName]));
-    });
+  get selectorForGlobalHooks() {
+    return Object.keys(this.allDirectives()).map((key) => ":scope [" + key.replace(/^d-/, `d-${this.kebabName}-`) + "]").join(", ");
   }
   extendInstance() {
     extendComponentInstance(this, ...this.mixins());
@@ -587,15 +582,20 @@ var Component = class {
     }
   }
   filterChildren(name) {
-    return this.children.filter((c) => c.constructor.name == name || c.alias == name);
+    return this.children.filter((c) => c.name == name);
   }
   portalElements() {
     return document.querySelectorAll(`[d-portal="${this.name}"]`);
   }
-  renewFromMutation(node) {
-    const hooksChanged = this.registerHooks(node);
-    this.debouncedCleanupRemovedNodes();
-    hooksChanged && this.render();
+  renewHooksFromMutation(node) {
+    const hooksChanged = document.contains(node) ? this.registerHooks(node) : false;
+    this.debouncedCleanupRemovedNodes(hooksChanged);
+    return hooksChanged;
+  }
+  renewGlobalHooksFromMutation(node) {
+    const hooksChanged = document.contains(node) ? this.registerGlobalHooks(node) : false;
+    this.debouncedCleanupRemovedNodes(hooksChanged);
+    return hooksChanged;
   }
   findChildrenElements({ includeElementInLoop = false } = {}) {
     let arr = [];
@@ -662,10 +662,22 @@ var Component = class {
   }
   registerHooks(scopeNode = void 0) {
     let updated = false;
-    Object.entries(this.allDirectives()).forEach(([hook, func]) => {
+    Object.entries(this.allDirectives()).forEach(([hook, _func]) => {
       this.findTopLevel(`[${hook}]`, scopeNode).forEach((ele) => {
         updated = true;
-        func(this, ele);
+        this.updateHook(hook, ele);
+      });
+    });
+    return updated;
+  }
+  registerGlobalHooks(scopeNode = void 0) {
+    scopeNode = scopeNode || document;
+    let updated = false;
+    scopeNode.querySelectorAll(this.selectorForGlobalHooks).forEach((node) => {
+      const attributes = getAttributesWithPrefix(node, this.kebaPrefix);
+      Object.entries(attributes).forEach(([key, _value]) => {
+        updated = true;
+        this.updateGlobalHook(key, node);
       });
     });
     return updated;
@@ -677,10 +689,10 @@ var Component = class {
   _mergeState(state, newState) {
     return deepMerge(state, newState);
   }
-  shouldFollowRender(parent, transition) {
+  shouldFollowRender(_parent, _transition) {
     return true;
   }
-  setState(state = {}, transition = {}, triggerRendering = true) {
+  setState(state = {}, transition = {}, triggerRendering = true, immediateRendering = false) {
     let prevState = this.state;
     let cloned = deepMerge({}, this.state);
     let newState = typeof state == "function" ? state(cloned) : this._mergeState(cloned, state);
@@ -696,7 +708,7 @@ var Component = class {
     cloned = deepMerge({}, this.state);
     debug.keepDirectives && setAttribute(this.element, "d-state", JSON.stringify(cloned));
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition);
-    triggerRendering && this.render(transition);
+    triggerRendering && (immediateRendering ? this.render(transition) : this.debouncedRender(transition));
     this.parent && this.parent.childrenChanged(this);
     return cloned;
   }
@@ -714,12 +726,12 @@ var Component = class {
     });
     this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
   }
-  debouncedRender() {
+  debouncedRender(transition = {}) {
     this._renderTimeout && clearTimeout(this._renderTimeout);
     this._renderTimeout = setTimeout(() => {
-      this.render();
+      this.render(transition);
       this._renderTimeout = null;
-    }, 100);
+    }, 10);
   }
   get root() {
     let par = this.parent;
@@ -732,31 +744,27 @@ var Component = class {
     }
     return par;
   }
-  updateHook(identifier, node, inDescendant = false) {
-    const originalIdentifier = identifier;
-    if (inDescendant) {
-      identifier = this.convertDescendantIdentifier(identifier);
-    }
+  _updateHook(identifier, node, value) {
     let nodeStateHooks = this.stateHooks.get(node);
     let nodeRenderHooks = this.renderHooks.get(node);
-    if (nodeStateHooks) {
-      nodeStateHooks.delete(identifier);
-    }
-    if (nodeRenderHooks) {
-      nodeRenderHooks.delete(identifier);
-    }
+    nodeStateHooks && nodeStateHooks.delete(identifier);
+    nodeRenderHooks && nodeRenderHooks.delete(identifier);
     this.removeEventListener(identifier, node);
-    if (node.hasAttribute(originalIdentifier)) {
+    if (value) {
       let directiveFunc = this.allDirectives()[identifier];
-      if (directiveFunc) {
-        if (inDescendant) {
-          directiveFunc(this, node, getAttribute(node, originalIdentifier));
-        } else {
-          directiveFunc(this, node);
-        }
-      }
+      directiveFunc && directiveFunc(this, node, value);
     }
-    this.deboundedHookUpdated(this.render.bind(this));
+  }
+  updateHook(identifier, node) {
+    const value = getAttribute(node, identifier);
+    this._updateHook(identifier, node, value);
+    this.debouncedHookUpdated();
+  }
+  updateGlobalHook(identifier, node) {
+    const value = getAttribute(node, identifier);
+    const directiveIdentifier = this.convertGlobalIdentifier(identifier);
+    this._updateHook(directiveIdentifier, node, value);
+    this.debouncedHookUpdated();
   }
   hookUpdated() {
   }
@@ -777,33 +785,29 @@ var Component = class {
     nodeHooks.set(identifier, hook);
   }
   cleanupRemovedNodes() {
-    const elements = [this.element, ...this.portalElements()];
     [this.renderHooks, this.stateHooks, this.eventMap].forEach((map) => {
       for (let [node, _hooks] of map) {
-        if (!elements.some((ele) => ele.contains(node))) {
+        if (!document.contains(node)) {
           map.delete(node);
         }
       }
     });
   }
-  debouncedCleanupRemovedNodes() {
-    if (this._cleanupTimeout) {
-      clearTimeout(this._cleanupTimeout);
-    }
+  debouncedCleanupRemovedNodes(triggerRendering = false) {
+    this._cleanupTimeout && clearTimeout(this._cleanupTimeout);
     this._cleanupTimeout = setTimeout(() => {
       this.cleanupRemovedNodes();
+      triggerRendering && this.render();
       this._cleanupTimeout = null;
     }, 100);
   }
-  deboundedHookUpdated(func) {
-    if (this._hookUpdatedTimeout) {
-      clearTimeout(this._hookUpdatedTimeout);
-    }
+  debouncedHookUpdated(triggerRendering = true) {
+    this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout);
     this._hookUpdatedTimeout = setTimeout(() => {
       this.hookUpdated();
-      func && func();
+      triggerRendering && this.render();
       this._hookUpdatedTimeout = null;
-    }, 50);
+    }, 100);
   }
 };
 var proxyToParent = (Class) => {
@@ -825,7 +829,7 @@ var ShadowComponent = class extends Component {
   get state() {
     return this.parent ? this.parent.state : this.context.parentComponent.state;
   }
-  set state(state) {
+  set state(_state) {
     return {};
   }
   setState(...args) {
@@ -915,6 +919,7 @@ var run = () => {
       return null;
     };
     DRender.observer = new MutationObserver((mutationsList, _observer) => {
+      const globalComponents = [...document.querySelectorAll("[d-global-directives]")].map((node) => node._dComponent).filter(Boolean);
       for (const mutation of mutationsList) {
         if (mutation.type === "childList") {
           mutation.addedNodes.forEach((node) => {
@@ -925,7 +930,7 @@ var run = () => {
               } else {
                 const parent = getParentComponent(node);
                 if (parent)
-                  parent.renewFromMutation(node);
+                  parent.renewHooksFromMutation(node);
                 if (node.querySelectorAll("[d-component], [d-state]").length > 0) {
                   let descendant2 = findInside(node, "[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]");
                   let top2 = findInside(node, "[d-state], [d-component]").filter((ele) => !descendant2.includes(ele));
@@ -933,6 +938,7 @@ var run = () => {
                   top2.forEach((node2) => emitEvent(node2, "d-component-initialized-from-mutation"));
                 }
               }
+              globalComponents.forEach((component) => component.renewGlobalHooksFromMutation(node));
             }
           });
           mutation.removedNodes.forEach((node) => {
@@ -951,6 +957,7 @@ var run = () => {
                 parent = getParentComponent(mutation.target);
               }
               parent && parent.debouncedCleanupRemovedNodes();
+              globalComponents.forEach((component) => component.debouncedCleanupRemovedNodes());
             }
           });
         } else if (mutation.type === "attributes") {
@@ -972,20 +979,15 @@ var run = () => {
             }
           } else if (attributeName.startsWith("d-")) {
             debug.logAttributeChanges && console.log("attribute changed", attributeName, mutation.oldValue, node);
-            if (node._dComponent) {
+            const globalComponent = globalComponents.find((component) => attributeName.startsWith(component.kebaPrefix));
+            if (globalComponent) {
+              globalComponent.updateGlobalHook(attributeName, node);
+            } else if (node._dComponent) {
               node._dComponent.updateHook(attributeName, node);
             } else {
               const parentComponent = getParentComponent(node);
-              if (parentComponent) {
-                parentComponent.updateHook(attributeName, node);
-              }
+              parentComponent && parentComponent.updateHook(attributeName, node);
             }
-            let linked = getAttribute(node, "linked-components");
-            linked = linked ? JSON.parse(linked) : [];
-            linked.forEach((kebabName) => {
-              const component = getParentComponent(node, kebabName);
-              component && component.updateHook(attributeName, node, true);
-            });
           }
         }
       }
@@ -1030,3 +1032,4 @@ export {
   extendComponentInstance,
   registerComponents
 };
+//# sourceMappingURL=d_render.js.map

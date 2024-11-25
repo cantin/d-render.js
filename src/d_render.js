@@ -144,6 +144,8 @@ const run = () => {
     }
 
     DRender.observer = new MutationObserver((mutationsList, _observer) => {
+      const globalComponents = [...document.querySelectorAll('[d-global-directives]')].map(node => node._dComponent).filter(Boolean)
+
       for(const mutation of mutationsList) {
         if (mutation.type === 'childList') {
           //mutation.addedNodes.forEach(node => node.nodeType == node.ELEMENT_NODE && console.log('added Node', node))
@@ -155,7 +157,7 @@ const run = () => {
                 emitEvent(node, 'd-component-initialized-from-mutation')
               } else {
                 const parent = getParentComponent(node)
-                if (parent) parent.renewFromMutation(node)
+                if (parent) parent.renewHooksFromMutation(node)
 
                 if (node.querySelectorAll('[d-component], [d-state]').length > 0) {
                   let descendant = findInside(node, '[d-state] [d-component], [d-state] [d-state], [d-component] [d-state], [d-component] [d-state]')
@@ -164,6 +166,8 @@ const run = () => {
                   top.forEach((node) => emitEvent(node, 'd-component-initialized-from-mutation'))
                 }
               }
+
+              globalComponents.forEach(component => component.renewGlobalHooksFromMutation(node))
             }
           })
 
@@ -184,6 +188,8 @@ const run = () => {
                 parent = getParentComponent(mutation.target)
               }
               parent && parent.debouncedCleanupRemovedNodes()
+
+              globalComponents.forEach(component => component.debouncedCleanupRemovedNodes())
             }
           })
         } else if (mutation.type === 'attributes') {
@@ -206,22 +212,15 @@ const run = () => {
             }
           } else if (attributeName.startsWith('d-')) {
             debug.logAttributeChanges && console.log('attribute changed', attributeName, mutation.oldValue, node)
-            if (node._dComponent) {
+            const globalComponent = globalComponents.find(component => attributeName.startsWith(component.kebaPrefix))
+            if (globalComponent) {
+              globalComponent.updateGlobalHook(attributeName, node)
+            } else if (node._dComponent) {
               node._dComponent.updateHook(attributeName, node)
             } else {
               const parentComponent = getParentComponent(node)
-
-              if (parentComponent) {
-                parentComponent.updateHook(attributeName, node)
-              }
+              parentComponent && parentComponent.updateHook(attributeName, node)
             }
-
-            let linked = getAttribute(node, 'linked-components')
-            linked = linked ? JSON.parse(linked) : []
-            linked.forEach((kebabName) => {
-              const component = getParentComponent(node, kebabName)
-              component && component.updateHook(attributeName, node, true)
-            })
           }
         }
       }

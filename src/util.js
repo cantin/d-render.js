@@ -126,6 +126,7 @@ const compileWithComponent = (str, component, ...args) => {
     let words = unique(getWords(str))
     let properties = getProperties(component)
     let used = words.filter(word => properties.includes(word))
+    // console.log(component, component.context, Object.getOwnPropertyNames(component.context))
     str = `
         let {${used}} = this;
         ${used.map((prop) => `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`).join("\n")}
@@ -213,6 +214,16 @@ const extendObject = (source, obj, excludedKeys = []) => {
   })
 }
 
+const getAttributesWithPrefix = (element, prefix) => {
+  const attributes = Array.from(element.attributes);
+  const matchingAttributes = attributes.filter(attr => attr.name.startsWith(prefix));
+  const result = {};
+  matchingAttributes.forEach(attr => {
+    result[attr.name] = attr.value;
+  });
+  return result;
+}
+
 export {
   debug,
   addReturnToScriptStr,
@@ -233,4 +244,5 @@ export {
   isTag,
   isNil,
   extendObject,
+  getAttributesWithPrefix,
 }
