@@ -1008,6 +1008,49 @@ var run = () => {
     component && component.render();
   });
 };
+var findComponents = (name, scopeNode = document) => {
+  return [...scopeNode.querySelectorAll(`:scope [d-component="${name}"], :scope [d-name="${name}"`)].map((node) => node._dComponent).filter(Boolean);
+};
+var graphComponents = (html = false, scopeNode = document.body) => {
+  _graphComponents(scopeNode, 0, html);
+};
+var _graphComponents = (scopeNode = document.body, level = 0, html = false) => {
+  if (!scopeNode)
+    return;
+  const indent = "--".repeat(level);
+  const rand = " ".repeat(Math.round(Math.random() * 10));
+  if (scopeNode.hasAttribute("d-component") || scopeNode.hasAttribute("d-state")) {
+    const componentName = scopeNode.getAttribute("d-component") || scopeNode.getAttribute("d-name") || "Component";
+    html ? console.log(`${indent}\u2514\u2500%o`, scopeNode) : console.log(`${indent}\u2514\u2500 ${componentName} ${rand}`);
+  }
+  const descendant = [...scopeNode.querySelectorAll(":scope [d-state] [d-component], :scope [d-state] [d-state], :scope [d-component] [d-state], :scope [d-component] [d-component]")];
+  const children = [...scopeNode.querySelectorAll(":scope [d-state], [d-component]")].filter((child) => !descendant.includes(child));
+  children.forEach((child) => {
+    _graphComponents(child, level + 1, html);
+  });
+};
+var closestComponent = (node) => {
+  let currentNode = node;
+  while (currentNode) {
+    if (currentNode._dComponent) {
+      return currentNode._dComponent;
+    }
+    currentNode = currentNode.parentElement;
+  }
+  return null;
+};
+var addHelpers = () => {
+  if (window.closestComponent == void 0) {
+    window.closestComponent = closestComponent;
+    Object.defineProperty(HTMLElement.prototype, "closestComponent", {
+      get: function() {
+        return closestComponent(this);
+      }
+    });
+  }
+  window.graphComponents == void 0 && (window.graphComponents = graphComponents);
+  window.findComponents == void 0 && (window.findComponents = findComponents);
+};
 var DRender = {
   run,
   registerComponents,
@@ -1022,7 +1065,11 @@ var DRender = {
   generatePrefixFunc,
   debug,
   compileToFunc,
-  compileWithComponent
+  compileWithComponent,
+  findComponents,
+  graphComponents,
+  closestComponent,
+  addHelpers
 };
 var d_render_default = DRender;
 export {
@@ -1030,6 +1077,6 @@ export {
   d_render_default as default,
   defineComponent,
   extendComponentInstance,
+  findComponents,
   registerComponents
 };
-//# sourceMappingURL=d_render.js.map

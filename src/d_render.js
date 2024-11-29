@@ -246,6 +246,65 @@ const run = () => {
   })
 }
 
+const findComponents = (name, scopeNode = document) => {
+  return [...scopeNode.querySelectorAll(`:scope [d-component="${name}"], :scope [d-name="${name}"`)].map(node => node._dComponent).filter(Boolean)
+}
+
+// generate a tree view for componenets that attached to the children of scopeNode
+const graphComponents = (html = false, scopeNode = document.body) => {
+  _graphComponents(scopeNode, 0, html)
+}
+
+const _graphComponents = (scopeNode = document.body, level = 0, html = false) => {
+  // Skip if invalid node
+  if (!scopeNode) return
+
+  // Create indentation
+  const indent = "--".repeat(level)
+
+  const rand = " ".repeat(Math.round(Math.random() * 10))
+
+  // Print current node if it's a component
+  if (scopeNode.hasAttribute('d-component') || scopeNode.hasAttribute('d-state')) {
+    const componentName = scopeNode.getAttribute('d-component') || scopeNode.getAttribute('d-name') || 'Component'
+    html ? console.log(`${indent}└─%o`, scopeNode) : console.log(`${indent}└─ ${componentName} ${rand}`)
+  }
+
+  // Find direct child components
+  const descendant = [...scopeNode.querySelectorAll(':scope [d-state] [d-component], :scope [d-state] [d-state], :scope [d-component] [d-state], :scope [d-component] [d-component]')]
+  const children = [...scopeNode.querySelectorAll(':scope [d-state], [d-component]')].filter(child => !descendant.includes(child))
+
+  // Recursively process child components
+  children.forEach(child => {
+    _graphComponents(child, level + 1, html)
+  })
+}
+
+const closestComponent = (node) => {
+  let currentNode = node
+
+  while (currentNode) {
+    if (currentNode._dComponent) {
+      return currentNode._dComponent;
+    }
+    currentNode = currentNode.parentElement;
+  }
+
+  return null
+}
+
+// Extend the Element prototype
+const addHelpers = () => {
+  if (window.closestComponent == undefined) {
+    window.closestComponent = closestComponent
+    Object.defineProperty(HTMLElement.prototype, 'closestComponent', {
+      get: function() { return closestComponent(this) }
+    })
+  }
+  window.graphComponents == undefined && (window.graphComponents = graphComponents)
+  window.findComponents == undefined && (window.findComponents = findComponents)
+}
+
 const DRender = {
   run,
   registerComponents,
@@ -261,6 +320,10 @@ const DRender = {
   debug,
   compileToFunc,
   compileWithComponent,
+  findComponents,
+  graphComponents,
+  closestComponent,
+  addHelpers
 }
 
 export default DRender
@@ -269,4 +332,5 @@ export {
   extendComponentInstance,
   registerComponents,
   defineComponent,
+  findComponents,
 }
