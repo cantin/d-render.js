@@ -24,6 +24,9 @@ const Directives = {
     if (node.matches('input[type="checkbox"]')) {
       eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.matches(":checked") }`)
       set = () => node.checked = component.state[key]
+    } else if (node.matches('input[type="radio"]')) {
+      eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.value }`)
+      set = () => node.checked = component.state[key] == node.value
     } else {
       eventFunc = generateEventFunc('d-model', 'input', `{ ${key}: event.target.value }`)
       set = () => node.value = component.state[key]
