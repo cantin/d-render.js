@@ -66,6 +66,7 @@ var compileToFunc = (...args) => {
   } catch (e) {
     console.log("Error occurred when compiling function from string:");
     console.log(args[args.length - 1]);
+    console.log(args);
     throw e;
   }
 };
@@ -145,14 +146,14 @@ var deepMerge = (obj, ...sources) => {
 var getAttribute = (node, name) => node.getAttribute(name);
 var setAttribute = (node, name, value) => node.setAttribute(name, value);
 var removeAttribute = (node, name) => node.removeAttribute(name);
-var getData2 = (node, name) => {
+var getData = (node, name) => {
   try {
     return JSON.parse(node.dataset[name]);
   } catch (e) {
     return node.dataset[name];
   }
 };
-var setData2 = (node, name, value) => node.dataset[name] = typeof value == "object" ? JSON.stringify(value) : value;
+var setData = (node, name, value) => node.dataset[name] = typeof value == "object" ? JSON.stringify(value) : value;
 var emitEvent = (node, event) => node.dispatchEvent(new Event(event, { bubbles: true }));
 var findInside = (node, selector) => [...node.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
 var querySelectorAll = (selector) => [...document.querySelectorAll(selector.split(",").map((se) => `:scope ${se}`).join(", "))];
@@ -238,10 +239,10 @@ var Prefixes = {
   }),
   ".debounce": generatePrefixFunc((handler, event, _component, node, _prefixes) => {
     let time = getAttribute(node, "d-debounce-duration") || 400;
-    let timer = parseInt(getData(node, `drender-${event.type}-debounce`));
+    let timer = parseInt(getAttribute(node, `drender-${event.type}-debounce`));
     timer && clearTimeout(timer);
     timer = setTimeout(() => handler(event), time);
-    setData(node, `drender-${event.type}-debounce`, timer);
+    setAttribute(node, `drender-${event.type}-debounce`, timer);
   })
 };
 
@@ -352,12 +353,12 @@ var Directives = {
     }
   }),
   "d-debounce-show": generateDirectiveFunc("d-debounce-show", null, (node, result, _component) => {
-    let timer = parseInt(getData2(node, "dRenderDebounceShowTimer"));
+    let timer = parseInt(getData(node, "dRenderDebounceShowTimer"));
     if (!!result == true) {
       let time = getAttribute(node, "d-debounce-duration") || 400;
       timer && clearTimeout(timer);
       timer = setTimeout(() => node.classList.toggle("d-render-hidden", !!!result), time);
-      setData2(node, `dRenderDebounceShowTimer`, timer);
+      setData(node, `dRenderDebounceShowTimer`, timer);
     } else {
       node.classList.toggle("d-render-hidden", !!!result);
       timer && clearTimeout(timer);
@@ -378,7 +379,7 @@ var Directives = {
     }
   }),
   "d-debounce-class": generateDirectiveFunc("d-debounce-class", null, (node, result, _component) => {
-    let timerHash = getData2(node, `dRenderDebounceClass`) || {};
+    let timerHash = getData(node, `dRenderDebounceClass`) || {};
     Object.entries(result).forEach(([name, state]) => {
       let timer = timerHash[name];
       if (state) {
@@ -393,7 +394,7 @@ var Directives = {
         timer && clearTimeout(timer);
       }
     });
-    setData2(node, "dRenderDebounceClass", timerHash);
+    setData(node, "dRenderDebounceClass", timerHash);
   }),
   "d-style": generateDirectiveFunc("d-style", null, (node, result, _component) => {
     Object.entries(result).forEach(([name, value]) => {

@@ -94,10 +94,10 @@ const Prefixes = {
   }),
   '.debounce': generatePrefixFunc((handler, event, _component, node, _prefixes) => {
     let time = getAttribute(node, 'd-debounce-duration') || 400
-    let timer = parseInt(getData(node, `drender-${event.type}-debounce`))
+    let timer = parseInt(getAttribute(node, `drender-${event.type}-debounce`))
     timer && clearTimeout(timer)
     timer = setTimeout(() => handler(event), time)
-    setData(node, `drender-${event.type}-debounce`, timer)
+    setAttribute(node, `drender-${event.type}-debounce`, timer)
   }),
 }
 

@@ -84,6 +84,7 @@ const compileToFunc = (...args) => {
   } catch (e) {
     console.log("Error occurred when compiling function from string:")
     console.log(args[args.length - 1])
+    console.log(args)
     throw e
   }
 }
