@@ -270,11 +270,13 @@ var Directives = {
     });
   },
   "d-loop": (component, node) => {
-    if (node.children.length != 1) {
-      throw new Error("Must only have one root element inside the d-loop.");
+    const template = node.querySelector("template");
+    if (!template) {
+      throw new Error("Must have a template element inside the d-loop.");
     }
-    let keyStr = getAttribute(node.children[0], "d-key"), loopStr = getAttribute(node, "d-loop"), varStr = getAttribute(node, "d-loop-var") || "loopItem", loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`;
-    !getAttribute(node.children[0], "d-component") && setAttribute(node.children[0], "d-component", "ShadowComponent");
+    const firstNode = template.content.children[0];
+    let keyStr = getAttribute(firstNode, "d-key"), loopStr = getAttribute(node, "d-loop"), varStr = getAttribute(node, "d-loop-var") || "loopItem", loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`;
+    !getAttribute(firstNode, "d-component") && setAttribute(firstNode, "d-component", "ShadowComponent");
     if (keyStr == void 0) {
       throw new Error("The root element inside d-loop must have d-key directive");
     }
@@ -287,8 +289,9 @@ var Directives = {
         Object.entries(items).forEach(([key, value], index) => func({ [loopItemKey]: key, [loopItem]: value, [loopItemIndex]: index }));
       }
     };
-    let originalNode = node.children[0].cloneNode(true);
+    let originalNode = firstNode.cloneNode(true);
     node.innerHTML = "";
+    node.appendChild(template);
     const append = (childComponentKey, context) => {
       let childNode = originalNode.cloneNode(true);
       node.appendChild(childNode);
@@ -313,7 +316,9 @@ var Directives = {
       let updated = {};
       let children = [...node.children].reduce((map, child) => {
         let component2 = child._dComponent;
-        map[component2.context._loopComponentKey] = component2;
+        if (component2) {
+          map[component2.context._loopComponentKey] = component2;
+        }
         return map;
       }, {});
       iterate(results, (context) => {

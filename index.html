@@ -37,6 +37,7 @@ Shuffle to-do list
 </a>
 </div>
 <div class='todo-list' d-loop='items' d-loop-var='item'>
+<template>
 <div d-key='item.id'>
 <div>
 <input d-change='setState((state) =&gt; { state.items.find(_item =&gt; item.id === _item.id).completed = !item.completed; return state })' d-prop='{ checked: item.completed }' type='checkbox'>
@@ -47,6 +48,7 @@ Shuffle to-do list
 </span>
 </div>
 </div>
+</template>
 </div>
 </div>
 <div d-portal='itemsExample'>
@@ -80,9 +82,11 @@ Count
 <div d-name='itemsExample' d-state='{ items: [&#39;a&#39;, &#39;b&#39;, &#39;c&#39;] }'>
 <div d-html='`&lt;span style=&quot;color: rgba(0, 0, 0, 0.25)&quot;&gt;From Parent ${parent.state.count}&lt;span&gt;`'></div>
 <div d-loop='items' d-loop-var='item'>
+<template>
 <div d-key='itemIndex'>
 <p d-style='{ color: itemIndex % 2 == 0 ? &quot;gray&quot; : &quot;red&quot; }' d-text='`Index: ${itemIndex}, Item: ${item}`'></p>
 </div>
+</template>
 </div>
 <div>
 <a d-click='{ items: items.concat(Math.random() * 100) }' href='javascript:void(0)'>

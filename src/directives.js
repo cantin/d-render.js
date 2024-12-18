@@ -40,17 +40,23 @@ const Directives = {
     })
   },
   'd-loop': (component, node) => {
-    if (node.children.length != 1) {
-      throw new Error("Must only have one root element inside the d-loop.")
+    // if (node.children.length != 1) {
+      // throw new Error("Must only have one root element inside the d-loop.")
+    // }
+    const template = node.querySelector('template')
+
+    if (!template) {
+      throw new Error("Must have a template element inside the d-loop.")
     }
 
-    let keyStr = getAttribute(node.children[0], 'd-key'),
+    const firstNode = template.content.children[0]
+    let keyStr = getAttribute(firstNode, 'd-key'),
       loopStr = getAttribute(node, 'd-loop'),
       varStr = getAttribute(node, 'd-loop-var') || 'loopItem',
       loopItemKey = `${varStr}Key`, loopItem = varStr, loopItemIndex = `${varStr}Index`
 
     // The first child is always a d-component
-    !getAttribute(node.children[0], 'd-component') && setAttribute(node.children[0], 'd-component', 'ShadowComponent')
+    !getAttribute(firstNode, 'd-component') && setAttribute(firstNode, 'd-component', 'ShadowComponent')
 
     if (keyStr == undefined) {
       throw new Error("The root element inside d-loop must have d-key directive")
@@ -67,8 +73,9 @@ const Directives = {
       }
     }
 
-    let originalNode = node.children[0].cloneNode(true)
+    let originalNode = firstNode.cloneNode(true)
     node.innerHTML = ''
+    node.appendChild(template)
 
     const append = (childComponentKey, context) => {
       let childNode = originalNode.cloneNode(true)
@@ -96,7 +103,9 @@ const Directives = {
 
       let children = [...node.children].reduce((map, child) => {
         let component = child._dComponent
-        map[component.context._loopComponentKey] = component
+        if (component) {
+          map[component.context._loopComponentKey] = component
+        }
         return map
       }, {})
 
