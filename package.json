@@ -1,6 +1,6 @@
 {
   "name": "yet_another_d_render",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "description": "A lightweight hotwired-compatible lib with declarative programming in HTML",
   "main": "./dist/d_render.js",
   "author": "Cantin Xu",

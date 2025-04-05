@@ -118,6 +118,34 @@ class Component {
   unmounted() {
   }
 
+  destroy() {
+    // Clear any pending timeouts
+    this._renderTimeout && clearTimeout(this._renderTimeout)
+    this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout)
+    this._cleanupTimeout && clearTimeout(this._cleanupTimeout)
+
+    // Remove all event listeners
+    this.eventMap.forEach((nodeEventMap, node) => {
+      nodeEventMap.forEach(({ event, handler }, _identifier) => {
+        node.removeEventListener(event, handler)
+      })
+    })
+    this.eventMap.clear()
+
+    // Clear hooks
+    this.renderHooks.clear()
+    this.stateHooks.clear()
+
+    // Call unmounted lifecycle hook
+    this.unmounted()
+
+    // Remove the component instance from the element
+    if (this.element) {
+      this.element._dComponent = undefined
+      this.element._dComponentContext = undefined
+    }
+  }
+
   // run when the state of the component is changed
   stateChanged(_prevState) {
     // meant to be overridden
@@ -616,14 +644,23 @@ const extendComponentInstance = (component, ...objs) => {
   component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives }
 }
 
+const findComponentClass = (className) => {
+  return (Classes[className] || Component)
+}
+
 // Create a component isntance and attach it to the element with key 'd-component'
 // The argument `context` would be stored in element data 'd-component-context', and be used for directive functions
 const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != undefined) return node._dComponent
 
+  let className = getAttribute(node, 'd-component')
+
+  if (isNil(className) && !node.hasAttribute('d-state')) {
+    return null
+  }
+
   node._dComponentContext = context
 
-  let className = getAttribute(node, 'd-component')
 
   // Return if the specified class is not registered to DRender yet
   // We will back to it later while the component class is registered to DRender
@@ -632,7 +669,7 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
     return null
   }
 
-  let _class = (Classes[className] || Component), component = new _class(node)
+  let _class = findComponentClass(className), component = new _class(node)
   node._dComponent = component
 
   let children = component.findChildrenElements()
@@ -650,4 +687,4 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
   return component
 }
 
-export { Component, createComponent, Classes, registerComponents, defineComponent, extendComponentInstance }
+export { Component, createComponent, findComponentClass, Classes, registerComponents, defineComponent, extendComponentInstance }

@@ -212,7 +212,7 @@ DRender.registerComponents(MyComponent)
 
 3. Initialize Hook:
 ```html
-<div d-after-initialized="handleInit()">
+<div d-after-initialized="handleInit">
 ```
 
 ### Component Relationships
@@ -376,10 +376,10 @@ Here's a complete Todo list application that showcases many D-Render features:
   <div class="input-group">
     <input
       d-model="newTodo"
-      d-keypress.enter="addTodo()"
+      d-keypress.enter="addTodo"
       placeholder="What needs to be done?"
       class="todo-input">
-    <button d-click="addTodo()">Add</button>
+    <button d-click="addTodo">Add</button>
   </div>
 
   <!-- Todo filters -->
@@ -419,7 +419,7 @@ Here's a complete Todo list application that showcases many D-Render features:
   <div class="todo-footer" d-show="todos.length > 0">
     <span d-text="remainingCount() + ' items left'"></span>
     <button
-      d-click="clearCompleted()"
+      d-click="clearCompleted"
       d-show="todos.some(t => t.completed)">
       Clear completed
     </button>
@@ -508,3 +508,4 @@ DRender.debug.logAttributeChanges = true
 ```javascript
 DRender.graphComponents()
 ```
+

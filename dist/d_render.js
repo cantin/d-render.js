@@ -553,6 +553,24 @@ var Component = class {
   }
   unmounted() {
   }
+  destroy() {
+    this._renderTimeout && clearTimeout(this._renderTimeout);
+    this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout);
+    this._cleanupTimeout && clearTimeout(this._cleanupTimeout);
+    this.eventMap.forEach((nodeEventMap, node) => {
+      nodeEventMap.forEach(({ event, handler }, _identifier) => {
+        node.removeEventListener(event, handler);
+      });
+    });
+    this.eventMap.clear();
+    this.renderHooks.clear();
+    this.stateHooks.clear();
+    this.unmounted();
+    if (this.element) {
+      this.element._dComponent = void 0;
+      this.element._dComponentContext = void 0;
+    }
+  }
   stateChanged(_prevState) {
   }
   childrenChanged(_child) {
@@ -886,15 +904,21 @@ var extendComponentInstance = (component, ...objs) => {
   component.state = deepMerge(component.state, _state);
   component._componentSpecificDirectives = { ...component._componentSpecificDirectives, ..._componentSpecificDirectives };
 };
+var findComponentClass = (className) => {
+  return Classes[className] || Component;
+};
 var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {}) => {
   if (node._dComponent != void 0)
     return node._dComponent;
-  node._dComponentContext = context;
   let className = getAttribute(node, "d-component");
+  if (isNil(className) && !node.hasAttribute("d-state")) {
+    return null;
+  }
+  node._dComponentContext = context;
   if (ignoreIfClassNotFound && !isNil(className) && !Classes[className]) {
     return null;
   }
-  let _class = Classes[className] || Component, component = new _class(node);
+  let _class = findComponentClass(className), component = new _class(node);
   node._dComponent = component;
   let children = component.findChildrenElements();
   children.map((child) => createComponent(child, { context }));
@@ -953,11 +977,11 @@ var run = () => {
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
               if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
-                node._dComponent && node._dComponent.unmounted();
+                node._dComponent && node._dComponent.destroy();
               }
               let elements = node.querySelectorAll("[d-component], [d-state]");
               if (elements.length > 0) {
-                elements.forEach((ele) => ele._dComponent && ele._dComponent.unmounted());
+                elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy());
               }
               let parent = null;
               if (mutation.target.hasAttribute("d-component") || mutation.target.hasAttribute("d-state")) {
@@ -972,15 +996,28 @@ var run = () => {
         } else if (mutation.type === "attributes") {
           const node = mutation.target;
           const attributeName = mutation.attributeName;
-          if (attributeName == "d-state") {
+          if (attributeName == "d-component") {
+            debug.logAttributeChanges && console.log("d-component changed, renew component", node);
+            node._dComponent && node._dComponent.destroy();
+            if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
+              requestAnimationFrame(() => {
+                const component = createComponent(node);
+                component && component.render();
+              });
+            }
+          } else if (attributeName == "d-state") {
             const stateAttr = node.getAttribute("d-state");
             debug.logAttributeChanges && console.log("d-state changed", stateAttr, node);
             const component = node._dComponent;
             if (component) {
               try {
-                const state = JSON.parse(stateAttr);
-                if (JSON.stringify(component.state) !== JSON.stringify(state)) {
-                  component.setState(state);
+                if (!stateAttr) {
+                  !node.hasAttribute("d-component") && component.destroy();
+                } else {
+                  const state = JSON.parse(stateAttr);
+                  if (JSON.stringify(component.state) !== JSON.stringify(state)) {
+                    component.setState(state);
+                  }
                 }
               } catch (e) {
                 console.error("Invalid JSON in d-state attribute:", stateAttr);

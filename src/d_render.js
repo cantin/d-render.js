@@ -118,7 +118,7 @@
 //       d-after-initialized:
 //         Run only onnce after the component is initialized.
 
-import { Component, createComponent, Classes, registerComponents, defineComponent, extendComponentInstance } from './component'
+import { Component, createComponent, findComponentClass, Classes, registerComponents, defineComponent, extendComponentInstance } from './component'
 import { debug, emitEvent, findInside, compileToFunc, compileWithComponent, querySelectorAll, getAttribute } from './util'
 import { Directives } from './directives'
 import { generateEventFunc, generatePrefixFunc, generateDirectiveFunc, Prefixes } from './directive_helpers'
@@ -174,11 +174,11 @@ const run = () => {
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
               if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
-                node._dComponent && node._dComponent.unmounted()
+                node._dComponent && node._dComponent.destroy()
               }
               let elements = node.querySelectorAll('[d-component], [d-state]')
               if (elements.length > 0) {
-                elements.forEach((ele) => ele._dComponent && ele._dComponent.unmounted())
+                elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy())
               }
 
               let parent = null
@@ -196,15 +196,28 @@ const run = () => {
           const node = mutation.target
           const attributeName = mutation.attributeName
 
-          if (attributeName == 'd-state') {
+          if (attributeName == 'd-component') {
+            debug.logAttributeChanges && console.log('d-component changed, renew component', node)
+            node._dComponent && node._dComponent.destroy()
+            if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
+              requestAnimationFrame(() => { 
+                const component = createComponent(node)
+                component && component.render()
+              })
+            }
+          } else if (attributeName == 'd-state') {
             const stateAttr = node.getAttribute('d-state')
             debug.logAttributeChanges && console.log('d-state changed', stateAttr, node)
             const component = node._dComponent
             if (component) {
               try {
-                const state = JSON.parse(stateAttr)
-                if (JSON.stringify(component.state) !== JSON.stringify(state)) {
-                  component.setState(state)
+                if (!stateAttr) {
+                  !node.hasAttribute('d-component') && component.destroy()
+                } else {
+                  const state = JSON.parse(stateAttr)
+                  if (JSON.stringify(component.state) !== JSON.stringify(state)) {
+                    component.setState(state)
+                  }
                 }
               } catch (e) {
                 console.error('Invalid JSON in d-state attribute:', stateAttr)
