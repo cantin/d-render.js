@@ -594,6 +594,7 @@ var Component = class {
   }
   set parent(parent) {
     this._parent = parent;
+    this._depth = void 0;
   }
   get parent() {
     return this._parent || parents(this.element, "[d-component], [d-state]")[0] && parents(this.element, "[d-component], [d-state]")[0]._dComponent;
@@ -748,27 +749,37 @@ var Component = class {
     }
   }
   render(transition = {}) {
+    this._renderTimeout && clearTimeout(this._renderTimeout);
     this.renderHooks.forEach((nodeHooks, _node) => {
       nodeHooks.forEach((hook) => hook.hook(transition));
     });
     this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
+  }
+  get depth() {
+    if (this._depth === void 0) {
+      this.root;
+    }
+    return this._depth;
   }
   debouncedRender(transition = {}) {
     this._renderTimeout && clearTimeout(this._renderTimeout);
     this._renderTimeout = setTimeout(() => {
       this.render(transition);
       this._renderTimeout = null;
-    }, 10);
+    }, 5 + this.depth);
   }
   get root() {
     let par = this.parent;
-    while (true) {
+    let count = 1;
+    while (par) {
       if (par.parent) {
         par = par.parent;
+        count++;
       } else {
         break;
       }
     }
+    this._depth = Math.min(count, 20);
     return par;
   }
   _updateHook(identifier, node, value) {

@@ -197,6 +197,7 @@ class Component {
 
   set parent(parent) {
     this._parent = parent
+    this._depth = undefined
   }
 
   get parent() {
@@ -409,29 +410,42 @@ class Component {
 
   // transition: a temporary flag to info render to do something only once when state changes from particular value to another.
   render(transition = {}) {
+    this._renderTimeout && clearTimeout(this._renderTimeout)
+
     this.renderHooks.forEach((nodeHooks, _node) => {
       nodeHooks.forEach(hook => hook.hook(transition))
     })
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
   }
 
+  get depth() {
+    if (this._depth === undefined) {
+      this.root
+    }
+    return this._depth
+  }
+
   debouncedRender(transition = {}) {
     this._renderTimeout && clearTimeout(this._renderTimeout)
+
     this._renderTimeout = setTimeout(() => {
       this.render(transition)
       this._renderTimeout = null
-    }, 10)
+    }, 5 + this.depth)
   }
 
   get root() {
     let par = this.parent
-    while (true) {
+    let count = 1
+    while (par) {
       if (par.parent) {
         par = par.parent
+        count++
       } else {
         break
       }
     }
+    this._depth = Math.min(count, 20)
     return par
   }
 
