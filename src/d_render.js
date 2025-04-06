@@ -150,6 +150,8 @@ const run = () => {
         if (mutation.type === 'childList') {
           //mutation.addedNodes.forEach(node => node.nodeType == node.ELEMENT_NODE && console.log('added Node', node))
           mutation.addedNodes.forEach((node) => {
+            if (!node.isConnected) return
+
             if (node.nodeType === node.ELEMENT_NODE) {
               // console.log('added', node)
               if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {

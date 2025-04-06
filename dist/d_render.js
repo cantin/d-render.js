@@ -967,6 +967,8 @@ var run = () => {
       for (const mutation of mutationsList) {
         if (mutation.type === "childList") {
           mutation.addedNodes.forEach((node) => {
+            if (!node.isConnected)
+              return;
             if (node.nodeType === node.ELEMENT_NODE) {
               if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
                 createComponent(node).render();
