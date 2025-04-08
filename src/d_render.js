@@ -175,23 +175,27 @@ const run = () => {
 
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
-              if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
-                node._dComponent && node._dComponent.destroy()
-              }
-              let elements = node.querySelectorAll('[d-component], [d-state]')
-              if (elements.length > 0) {
-                elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy())
-              }
+              requestAnimationFrame(() => {
+                if (node.isConnected) return
 
-              let parent = null
-              if (mutation.target.hasAttribute('d-component') || mutation.target.hasAttribute('d-state')) {
-                parent = mutation.target._dComponent
-              } else {
-                parent = getParentComponent(mutation.target)
-              }
-              parent && parent.debouncedCleanupRemovedNodes()
+                if (node.hasAttribute('d-component') || node.hasAttribute('d-state')) {
+                  node._dComponent && node._dComponent.destroy()
+                }
+                let elements = node.querySelectorAll('[d-component], [d-state]')
+                if (elements.length > 0) {
+                  elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy())
+                }
 
-              globalComponents.forEach(component => component.debouncedCleanupRemovedNodes())
+                let parent = null
+                if (mutation.target.hasAttribute('d-component') || mutation.target.hasAttribute('d-state')) {
+                  parent = mutation.target._dComponent
+                } else {
+                  parent = getParentComponent(mutation.target)
+                }
+                parent && parent.debouncedCleanupRemovedNodes()
+
+                globalComponents.forEach(component => component.debouncedCleanupRemovedNodes())
+              })
             }
           })
         } else if (mutation.type === 'attributes') {

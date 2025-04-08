@@ -854,7 +854,7 @@ var proxyToParent = (Class) => {
       if (Reflect.has(obj, prop)) {
         return Reflect.get(obj, prop);
       } else {
-        return Reflect.get(obj.parent, prop);
+        return obj.parent && Reflect.get(obj.parent, prop);
       }
     }
   });
@@ -922,10 +922,10 @@ var createComponent = (node, { context = {}, ignoreIfClassNotFound = false } = {
   if (node._dComponent != void 0)
     return node._dComponent;
   let className = getAttribute(node, "d-component");
+  node._dComponentContext = context;
   if (isNil(className) && !node.hasAttribute("d-state")) {
     return null;
   }
-  node._dComponentContext = context;
   if (ignoreIfClassNotFound && !isNil(className) && !Classes[className]) {
     return null;
   }
@@ -989,21 +989,25 @@ var run = () => {
           });
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === node.ELEMENT_NODE) {
-              if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
-                node._dComponent && node._dComponent.destroy();
-              }
-              let elements = node.querySelectorAll("[d-component], [d-state]");
-              if (elements.length > 0) {
-                elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy());
-              }
-              let parent = null;
-              if (mutation.target.hasAttribute("d-component") || mutation.target.hasAttribute("d-state")) {
-                parent = mutation.target._dComponent;
-              } else {
-                parent = getParentComponent(mutation.target);
-              }
-              parent && parent.debouncedCleanupRemovedNodes();
-              globalComponents.forEach((component) => component.debouncedCleanupRemovedNodes());
+              requestAnimationFrame(() => {
+                if (node.isConnected)
+                  return;
+                if (node.hasAttribute("d-component") || node.hasAttribute("d-state")) {
+                  node._dComponent && node._dComponent.destroy();
+                }
+                let elements = node.querySelectorAll("[d-component], [d-state]");
+                if (elements.length > 0) {
+                  elements.forEach((ele) => ele._dComponent && ele._dComponent.destroy());
+                }
+                let parent = null;
+                if (mutation.target.hasAttribute("d-component") || mutation.target.hasAttribute("d-state")) {
+                  parent = mutation.target._dComponent;
+                } else {
+                  parent = getParentComponent(mutation.target);
+                }
+                parent && parent.debouncedCleanupRemovedNodes();
+                globalComponents.forEach((component) => component.debouncedCleanupRemovedNodes());
+              });
             }
           });
         } else if (mutation.type === "attributes") {
@@ -1139,3 +1143,4 @@ export {
   findComponents,
   registerComponents
 };
+//# sourceMappingURL=d_render.js.map

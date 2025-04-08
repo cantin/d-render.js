@@ -539,7 +539,7 @@ const proxyToParent = (Class) => {
       if (Reflect.has(obj, prop)) {
         return Reflect.get(obj, prop)
       } else {
-        return Reflect.get(obj.parent, prop)
+        return obj.parent && Reflect.get(obj.parent, prop)
       }
     }
   })
@@ -669,12 +669,11 @@ const createComponent = (node, { context = {}, ignoreIfClassNotFound = false } =
 
   let className = getAttribute(node, 'd-component')
 
+  node._dComponentContext = context
+
   if (isNil(className) && !node.hasAttribute('d-state')) {
     return null
   }
-
-  node._dComponentContext = context
-
 
   // Return if the specified class is not registered to DRender yet
   // We will back to it later while the component class is registered to DRender
