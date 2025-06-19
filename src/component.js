@@ -36,6 +36,7 @@ class Component {
     this.eventMap = new Map()
     this._componentSpecificDirectives = {}
     this._cleanupTimeout = null
+    this.setStateCallbacks = []
 
     this.name = getAttribute(this.element, 'd-name') || this.constructor.name
     !debug.keepDirectives && removeAttribute(this.element, 'd-name')
@@ -135,6 +136,9 @@ class Component {
     // Clear hooks
     this.renderHooks.clear()
     this.stateHooks.clear()
+
+    // Clear setStateCallbacks
+    this.setStateCallbacks = []
 
     // Call unmounted lifecycle hook
     this.unmounted()
@@ -371,7 +375,20 @@ class Component {
     return true
   }
 
-  setState(state = {}, transition = {}, triggerRendering = true, immediateRendering = false) {
+  setState(state = {}, transitionOrCallback = {}, triggerRenderingOrCallback = true, immediateRendering = false) {
+    // Parse arguments - if second or third argument is a function, treat it as callback
+    let transition = transitionOrCallback
+    let triggerRendering = triggerRenderingOrCallback
+    let callback = null
+
+    if (typeof transitionOrCallback === 'function') {
+      callback = transitionOrCallback
+      transition = {}
+    } else if (typeof triggerRenderingOrCallback === 'function') {
+      callback = triggerRenderingOrCallback
+      triggerRendering = true
+    }
+
     let prevState = this.state
     let cloned = deepMerge({}, this.state)
     let newState = typeof state == 'function' ?  state(cloned) : this._mergeState(cloned, state)
@@ -390,6 +407,11 @@ class Component {
 
     cloned = deepMerge({}, this.state)
     debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(cloned))
+
+    // Push callback to setStateCallbacks array instead of calling immediately
+    if (callback) {
+      this.setStateCallbacks.push(callback)
+    }
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition)
     triggerRendering && (immediateRendering ? this.render(transition) : this.debouncedRender(transition))
@@ -416,6 +438,15 @@ class Component {
       nodeHooks.forEach(hook => hook.hook(transition))
     })
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
+
+    // Use requestAnimationFrame to call callbacks and clear the array
+    if (this.setStateCallbacks.length > 0) {
+      requestAnimationFrame(() => {
+        const callbacks = [...this.setStateCallbacks]
+        this.setStateCallbacks = []
+        callbacks.forEach(callback => callback())
+      })
+    }
   }
 
   get depth() {
@@ -431,7 +462,7 @@ class Component {
     this._renderTimeout = setTimeout(() => {
       this.render(transition)
       this._renderTimeout = null
-    }, 5 + this.depth)
+    }, 1 + this.depth)
   }
 
   get root() {
