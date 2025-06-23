@@ -221,7 +221,7 @@ class Component {
   }
 
   filterChildren(name) {
-    return this.children.filter(c => (c.name == name))
+    return this.children.filter(c => (c.name == name || c.constructor.name == name))
   }
 
   portalElements() {
