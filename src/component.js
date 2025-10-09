@@ -36,7 +36,7 @@ class Component {
     this.eventMap = new Map()
     this._componentSpecificDirectives = {}
     this._cleanupTimeout = null
-    this.setStateCallbacks = []
+    this.setStatePromises = [] // Stores promise objects with their resolvers
 
     this.name = getAttribute(this.element, 'd-name') || this.constructor.name
     !debug.keepDirectives && removeAttribute(this.element, 'd-name')
@@ -137,8 +137,8 @@ class Component {
     this.renderHooks.clear()
     this.stateHooks.clear()
 
-    // Clear setStateCallbacks
-    this.setStateCallbacks = []
+    // Clear setStatePromises
+    this.setStatePromises = []
 
     // Call unmounted lifecycle hook
     this.unmounted()
@@ -395,7 +395,9 @@ class Component {
 
     this.state = newState
 
-    if (this._insideStateChanging) return
+    if (this._insideStateChanging) {
+      return Promise.resolve(cloned)
+    }
 
     this.insideStateChanging(() => {
       this.stateHooks.forEach((nodeHooks, _node) => {
@@ -408,17 +410,25 @@ class Component {
     cloned = deepMerge({}, this.state)
     debug.keepDirectives && setAttribute(this.element, 'd-state', JSON.stringify(cloned))
 
-    // Push callback to setStateCallbacks array instead of calling immediately
-    if (callback) {
-      this.setStateCallbacks.push(callback)
-    }
+    // Always create a promise and store it with its resolver
+    let promiseResolver
+    const promise = new Promise(resolve => {
+      promiseResolver = resolve
+    })
+
+    this.setStatePromises.push({
+      promise,
+      resolve: promiseResolver,
+      state: cloned
+    })
 
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition)
     triggerRendering && (immediateRendering ? this.render(transition) : this.debouncedRender(transition))
 
     this.parent && this.parent.childrenChanged(this)
 
-    return cloned
+    // Chain callback using promise.then if provided
+    return callback ? promise.then(callback) : promise
   }
 
   insideStateChanging(func) {
@@ -439,12 +449,12 @@ class Component {
     })
     this.children.forEach(child => child.shouldFollowRender(this, transition) && child.render(transition))
 
-    // Use requestAnimationFrame to call callbacks and clear the array
-    if (this.setStateCallbacks.length > 0) {
+    // Use requestAnimationFrame to resolve promises
+    if (this.setStatePromises.length > 0) {
       requestAnimationFrame(() => {
-        const callbacks = [...this.setStateCallbacks]
-        this.setStateCallbacks = []
-        callbacks.forEach(callback => callback())
+        const promises = [...this.setStatePromises]
+        this.setStatePromises = []
+        promises.forEach(({ resolve, state }) => resolve(state))
       })
     }
   }
