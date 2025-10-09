@@ -84,7 +84,7 @@ const Directives = {
     }
 
     iterate(loopFunc(component), (context) => {
-      let childComponentKey = keyFunc(...Object.values(context))
+      let childComponentKey = keyFunc(context[loopItemKey], context[loopItem], context[loopItemIndex])
       append(childComponentKey, context)
     })
 
@@ -94,37 +94,64 @@ const Directives = {
       for (const child of node.children) { removeAttribute(child, 'd-key') }
     }
 
+    const hasContextChanged = (oldContext, newContext) => {
+      if (oldContext === newContext) return false;
+
+      const oldKeys = Object.keys(oldContext);
+      const newKeys = Object.keys(newContext);
+      if (oldKeys.length !== newKeys.length) return true;
+
+      return oldKeys.some(key => oldContext[key] !== newContext[key]);
+    };
+
+    const needsReordering = (currentChildren, newOrder) => {
+      const actualChildren = currentChildren.filter(child => child._dComponent);
+      if (actualChildren.length !== newOrder.length) return true;
+      return actualChildren.some((child, index) => child !== newOrder[index]);
+    };
+
     const loopHook = () => {
       let results = loopFunc(component)
-      if (JSON.stringify(results) === node._lastLoopResults) return;
-      node._lastLoopResults = JSON.stringify(results);
+      const newLoopResult = JSON.stringify(results);
+      if (newLoopResult === node._lastLoopResults) return;
+      node._lastLoopResults = newLoopResult;
 
-      let updated = {}
+      const currentChildren = Array.from(node.children);
+      const existingComponents = currentChildren.reduce((map, child) => {
+        // exclude the template element
+        const comp = child._dComponent;
+        if (comp) map[comp.context._loopComponentKey] = comp;
+        return map;
+      }, {});
 
-      let children = [...node.children].reduce((map, child) => {
-        let component = child._dComponent
-        if (component) {
-          map[component.context._loopComponentKey] = component
-        }
-        return map
-      }, {})
-
+      const newOrder = [];
       iterate(results, (context) => {
-        let childComponentKey = keyFunc(...Object.values(context))
-        let childComponent = children[childComponentKey]
+        const key = keyFunc(context[loopItemKey], context[loopItem], context[loopItemIndex]);
+        const existing = existingComponents[key];
 
-        if (childComponent) {
-          childComponent.context = deepMerge({}, childComponent.context, context)
+        if (existing) {
+          if (hasContextChanged(existing.context, context)) {
+            existing.context = deepMerge({}, existing.context, context);
+          }
+          newOrder.push(existing.element);
         } else {
-          childComponent = append(childComponentKey, context)
+          const newComponent = append(key, context);
+          newOrder.push(newComponent.element);
         }
-        node.appendChild(childComponent.element)
-        updated[childComponentKey] = true
-      })
+      });
 
-      Object.entries(children).forEach(([k, childComponent]) => {
-        (updated[k] == undefined) && childComponent.element.remove()
-      })
+      if (needsReordering(currentChildren, newOrder)) {
+        const fragment = document.createDocumentFragment();
+        newOrder.forEach(node => fragment.appendChild(node));
+        node.innerHTML = '';
+        node.appendChild(fragment);
+      }
+
+      Object.keys(existingComponents).forEach(key => {
+        if (!newOrder.includes(existingComponents[key].element)) {
+          existingComponents[key].element.remove();
+        }
+      });
     }
 
     component.addRenderHook('d-loop', {
