@@ -36,6 +36,9 @@ class Component {
     this.eventMap = new Map()
     this._componentSpecificDirectives = {}
     this._cleanupTimeout = null
+    this._renderFrameId = null
+    this._renderFrameCount = 0
+    this._targetRenderFrame = 0
     this.setStatePromises = [] // Stores promise objects with their resolvers
 
     this.name = getAttribute(this.element, 'd-name') || this.constructor.name
@@ -120,10 +123,14 @@ class Component {
   }
 
   destroy() {
-    // Clear any pending timeouts
-    this._renderTimeout && clearTimeout(this._renderTimeout)
+    // Clear any pending timeouts and animation frames
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId)
     this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout)
     this._cleanupTimeout && clearTimeout(this._cleanupTimeout)
+
+    // Reset frame counting state
+    this._renderFrameCount = 0
+    this._targetRenderFrame = 0
 
     // Remove all event listeners
     this.eventMap.forEach((nodeEventMap, node) => {
@@ -442,7 +449,7 @@ class Component {
 
   // transition: a temporary flag to info render to do something only once when state changes from particular value to another.
   render(transition = {}) {
-    this._renderTimeout && clearTimeout(this._renderTimeout)
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId)
 
     this.renderHooks.forEach((nodeHooks, _node) => {
       nodeHooks.forEach(hook => hook.hook(transition))
@@ -467,12 +474,25 @@ class Component {
   }
 
   debouncedRender(transition = {}) {
-    this._renderTimeout && clearTimeout(this._renderTimeout)
+    // 取消之前的渲染任务
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId)
 
-    this._renderTimeout = setTimeout(() => {
-      this.render(transition)
-      this._renderTimeout = null
-    }, 1 + this.depth)
+    // 用帧数模拟延迟，基于深度设置目标帧数
+    this._targetRenderFrame = 1 + this.depth
+    this._renderFrameCount = 0
+
+    const scheduleNextFrame = () => {
+      this._renderFrameCount++
+
+      if (this._renderFrameCount >= this._targetRenderFrame) {
+        this.render(transition)
+        this._renderFrameId = null
+      } else {
+        this._renderFrameId = requestAnimationFrame(scheduleNextFrame)
+      }
+    }
+
+    this._renderFrameId = requestAnimationFrame(scheduleNextFrame)
   }
 
   get root() {

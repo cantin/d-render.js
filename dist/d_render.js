@@ -520,7 +520,10 @@ var Component = class {
     this.eventMap = /* @__PURE__ */ new Map();
     this._componentSpecificDirectives = {};
     this._cleanupTimeout = null;
-    this.setStateCallbacks = [];
+    this._renderFrameId = null;
+    this._renderFrameCount = 0;
+    this._targetRenderFrame = 0;
+    this.setStatePromises = [];
     this.name = getAttribute(this.element, "d-name") || this.constructor.name;
     !debug.keepDirectives && removeAttribute(this.element, "d-name");
     this.hasGlobalDirectives = getAttribute(this.element, "d-global-directives") || false;
@@ -581,9 +584,11 @@ var Component = class {
   unmounted() {
   }
   destroy() {
-    this._renderTimeout && clearTimeout(this._renderTimeout);
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId);
     this._hookUpdatedTimeout && clearTimeout(this._hookUpdatedTimeout);
     this._cleanupTimeout && clearTimeout(this._cleanupTimeout);
+    this._renderFrameCount = 0;
+    this._targetRenderFrame = 0;
     this.eventMap.forEach((nodeEventMap, node) => {
       nodeEventMap.forEach(({ event, handler }, _identifier) => {
         node.removeEventListener(event, handler);
@@ -592,7 +597,7 @@ var Component = class {
     this.eventMap.clear();
     this.renderHooks.clear();
     this.stateHooks.clear();
-    this.setStateCallbacks = [];
+    this.setStatePromises = [];
     this.unmounted();
     if (this.element) {
       this.element._dComponent = void 0;
@@ -763,8 +768,9 @@ var Component = class {
     let cloned = deepMerge({}, this.state);
     let newState = typeof state == "function" ? state(cloned) : this._mergeState(cloned, state);
     this.state = newState;
-    if (this._insideStateChanging)
-      return;
+    if (this._insideStateChanging) {
+      return Promise.resolve(cloned);
+    }
     this.insideStateChanging(() => {
       this.stateHooks.forEach((nodeHooks, _node) => {
         nodeHooks.forEach((hook) => hook.hook(prevState));
@@ -773,13 +779,19 @@ var Component = class {
     });
     cloned = deepMerge({}, this.state);
     debug.keepDirectives && setAttribute(this.element, "d-state", JSON.stringify(cloned));
-    if (callback) {
-      this.setStateCallbacks.push(callback);
-    }
+    let promiseResolver;
+    const promise = new Promise((resolve) => {
+      promiseResolver = resolve;
+    });
+    this.setStatePromises.push({
+      promise,
+      resolve: promiseResolver,
+      state: cloned
+    });
     transition = deepMerge(this.transistionOnStateChanging(prevState, cloned), transition);
     triggerRendering && (immediateRendering ? this.render(transition) : this.debouncedRender(transition));
     this.parent && this.parent.childrenChanged(this);
-    return cloned;
+    return callback ? promise.then(callback) : promise;
   }
   insideStateChanging(func) {
     try {
@@ -790,16 +802,16 @@ var Component = class {
     }
   }
   render(transition = {}) {
-    this._renderTimeout && clearTimeout(this._renderTimeout);
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId);
     this.renderHooks.forEach((nodeHooks, _node) => {
       nodeHooks.forEach((hook) => hook.hook(transition));
     });
     this.children.forEach((child) => child.shouldFollowRender(this, transition) && child.render(transition));
-    if (this.setStateCallbacks.length > 0) {
+    if (this.setStatePromises.length > 0) {
       requestAnimationFrame(() => {
-        const callbacks = [...this.setStateCallbacks];
-        this.setStateCallbacks = [];
-        callbacks.forEach((callback) => callback());
+        const promises = [...this.setStatePromises];
+        this.setStatePromises = [];
+        promises.forEach(({ resolve, state }) => resolve(state));
       });
     }
   }
@@ -810,11 +822,19 @@ var Component = class {
     return this._depth;
   }
   debouncedRender(transition = {}) {
-    this._renderTimeout && clearTimeout(this._renderTimeout);
-    this._renderTimeout = setTimeout(() => {
-      this.render(transition);
-      this._renderTimeout = null;
-    }, 1 + this.depth);
+    this._renderFrameId && cancelAnimationFrame(this._renderFrameId);
+    this._targetRenderFrame = 1 + this.depth;
+    this._renderFrameCount = 0;
+    const scheduleNextFrame = () => {
+      this._renderFrameCount++;
+      if (this._renderFrameCount >= this._targetRenderFrame) {
+        this.render(transition);
+        this._renderFrameId = null;
+      } else {
+        this._renderFrameId = requestAnimationFrame(scheduleNextFrame);
+      }
+    };
+    this._renderFrameId = requestAnimationFrame(scheduleNextFrame);
   }
   get root() {
     let par = this.parent;
