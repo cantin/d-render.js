@@ -125,12 +125,34 @@ const compileWithComponent = (str, component, ...args) => {
       str = addReturnToScriptStr(str)
     }
     let words = unique(getWords(str))
-    let properties = getProperties(component)
-    let used = words.filter(word => properties.includes(word))
+    let ownProperties = getProperties(component)
+    let parent = (component.context && component.context.parentComponent) || component.parent
+    let allProperties = ownProperties
+
+    if (component.isShadowComponent && parent) {
+      allProperties = unique([...allProperties, ...getProperties(parent)])
+    }
+
+    let used = words.filter(word => allProperties.includes(word))
+
+    const initializationCode = used.map((prop) => {
+      if (component.isShadowComponent && !ownProperties.includes(prop)) {
+        return `let ${prop} = (this.context.parentComponent || this.parent)["${prop}"];`
+      }
+      return `let ${prop} = this["${prop}"];`
+    }).join("\n")
+
+    const bindingCode = used.map((prop) => {
+      if (component.isShadowComponent && !ownProperties.includes(prop)) {
+        return `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this.context.parentComponent || this.parent);`
+      }
+      return `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`
+    }).join("\n")
+
     // console.log(component, component.context, Object.getOwnPropertyNames(component.context))
     str = `
-        let {${used}} = this;
-        ${used.map((prop) => `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`).join("\n")}
+        ${initializationCode}
+        ${bindingCode}
         let {${Object.getOwnPropertyNames(component.context)}} = this.context;
         let {${Object.getOwnPropertyNames(component.state)}} = this.state;
         ${str}
@@ -157,7 +179,8 @@ const getProperties = (obj) => {
   let currentObj = obj
   do {
     Object.getOwnPropertyNames(currentObj).map(item => properties.add(item))
-  } while ((currentObj = Object.getPrototypeOf(currentObj)))
+  } while ((currentObj = Object.getPrototypeOf(currentObj)) && currentObj !== Object.prototype)
+
   return [...properties]
 }
 

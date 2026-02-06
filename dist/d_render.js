@@ -99,11 +99,28 @@ var compileWithComponent = (str, component, ...args) => {
       str = addReturnToScriptStr(str);
     }
     let words = unique(getWords(str));
-    let properties = getProperties(component);
-    let used = words.filter((word) => properties.includes(word));
+    let ownProperties = getProperties(component);
+    let parent = component.context && component.context.parentComponent || component.parent;
+    let allProperties = ownProperties;
+    if (component.isShadowComponent && parent) {
+      allProperties = unique([...allProperties, ...getProperties(parent)]);
+    }
+    let used = words.filter((word) => allProperties.includes(word));
+    const initializationCode = used.map((prop) => {
+      if (component.isShadowComponent && !ownProperties.includes(prop)) {
+        return `let ${prop} = (this.context.parentComponent || this.parent)["${prop}"];`;
+      }
+      return `let ${prop} = this["${prop}"];`;
+    }).join("\n");
+    const bindingCode = used.map((prop) => {
+      if (component.isShadowComponent && !ownProperties.includes(prop)) {
+        return `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this.context.parentComponent || this.parent);`;
+      }
+      return `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`;
+    }).join("\n");
     str = `
-        let {${used}} = this;
-        ${used.map((prop) => `if (typeof ${prop} == 'function') ${prop} = ${prop}.bind(this);`).join("\n")}
+        ${initializationCode}
+        ${bindingCode}
         let {${Object.getOwnPropertyNames(component.context)}} = this.context;
         let {${Object.getOwnPropertyNames(component.state)}} = this.state;
         ${str}
@@ -127,7 +144,7 @@ var getProperties = (obj) => {
   let currentObj = obj;
   do {
     Object.getOwnPropertyNames(currentObj).map((item) => properties.add(item));
-  } while (currentObj = Object.getPrototypeOf(currentObj));
+  } while ((currentObj = Object.getPrototypeOf(currentObj)) && currentObj !== Object.prototype);
   return [...properties];
 };
 var deepMerge = (obj, ...sources) => {
@@ -290,22 +307,27 @@ var Directives = {
       }
     };
     let originalNode = firstNode.cloneNode(true);
-    node.innerHTML = "";
-    node.appendChild(template);
-    const append = (childComponentKey, context) => {
+    Array.from(node.children).forEach((child) => {
+      if (child !== template && child.hasAttribute("d-key"))
+        node.removeChild(child);
+    });
+    const append = (childComponentKey, context, anchor) => {
       let childNode = originalNode.cloneNode(true);
-      node.appendChild(childNode);
+      anchor.after(childNode);
       return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey, parentComponent: component } });
     };
+    let lastNode = template;
     iterate(loopFunc(component), (context) => {
       let childComponentKey = keyFunc(context[loopItemKey], context[loopItem], context[loopItemIndex]);
-      append(childComponentKey, context);
+      const comp = append(childComponentKey, context, lastNode);
+      lastNode = comp.element;
     });
     if (!debug.keepDirectives) {
       removeAttribute(node, "d-loop");
       removeAttribute(node, "d-loop-var");
       for (const child of node.children) {
-        removeAttribute(child, "d-key");
+        if (child._dComponent)
+          removeAttribute(child, "d-key");
       }
     }
     const hasContextChanged = (oldContext, newContext) => {
@@ -346,21 +368,23 @@ var Directives = {
           }
           newOrder.push(existing.element);
         } else {
-          const newComponent = append(key, context);
+          const newComponent = append(key, context, template);
           newOrder.push(newComponent.element);
         }
       });
-      if (needsReordering(currentChildren, newOrder)) {
-        const fragment = document.createDocumentFragment();
-        newOrder.forEach((node2) => fragment.appendChild(node2));
-        node.innerHTML = "";
-        node.appendChild(fragment);
-      }
       Object.keys(existingComponents).forEach((key) => {
-        if (!newOrder.includes(existingComponents[key].element)) {
-          existingComponents[key].element.remove();
+        const comp = existingComponents[key];
+        if (!newOrder.includes(comp.element)) {
+          comp.element.remove();
         }
       });
+      if (needsReordering(currentChildren, newOrder)) {
+        let currentAnchor = template;
+        newOrder.forEach((childNode) => {
+          currentAnchor.after(childNode);
+          currentAnchor = childNode;
+        });
+      }
     };
     component.addRenderHook("d-loop", {
       identifier: "d-loop",
@@ -931,6 +955,9 @@ var ShadowComponent = class extends Component {
   constructor(element) {
     super(element);
     return proxyToParent(this);
+  }
+  get isShadowComponent() {
+    return true;
   }
   get state() {
     return this.parent ? this.parent.state : this.context.parentComponent.state;

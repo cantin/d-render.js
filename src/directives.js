@@ -74,24 +74,31 @@ const Directives = {
     }
 
     let originalNode = firstNode.cloneNode(true)
-    node.innerHTML = ''
-    node.appendChild(template)
+    // Only remove initial children that have d-key (assumed to be SSR-ed loop items)
+    // This preserves other static elements like .selected-box
+    Array.from(node.children).forEach(child => {
+      if (child !== template && child.hasAttribute('d-key')) node.removeChild(child)
+    })
 
-    const append = (childComponentKey, context) => {
+    const append = (childComponentKey, context, anchor) => {
       let childNode = originalNode.cloneNode(true)
-      node.appendChild(childNode)
+      anchor.after(childNode)
       return createComponent(childNode, { context: { ...context, _loopComponentKey: childComponentKey, parentComponent: component }})
     }
 
+    let lastNode = template
     iterate(loopFunc(component), (context) => {
       let childComponentKey = keyFunc(context[loopItemKey], context[loopItem], context[loopItemIndex])
-      append(childComponentKey, context)
+      const comp = append(childComponentKey, context, lastNode)
+      lastNode = comp.element
     })
 
     if (!debug.keepDirectives) {
       removeAttribute(node, 'd-loop')
       removeAttribute(node, 'd-loop-var')
-      for (const child of node.children) { removeAttribute(child, 'd-key') }
+      for (const child of node.children) {
+        if (child._dComponent) removeAttribute(child, 'd-key')
+      }
     }
 
     const hasContextChanged = (oldContext, newContext) => {
@@ -118,7 +125,6 @@ const Directives = {
 
       const currentChildren = Array.from(node.children);
       const existingComponents = currentChildren.reduce((map, child) => {
-        // exclude the template element
         const comp = child._dComponent;
         if (comp) map[comp.context._loopComponentKey] = comp;
         return map;
@@ -135,23 +141,28 @@ const Directives = {
           }
           newOrder.push(existing.element);
         } else {
-          const newComponent = append(key, context);
+          // Temporarily use a dummy anchor, will be reordered correctly below
+          const newComponent = append(key, context, template);
           newOrder.push(newComponent.element);
         }
       });
 
-      if (needsReordering(currentChildren, newOrder)) {
-        const fragment = document.createDocumentFragment();
-        newOrder.forEach(node => fragment.appendChild(node));
-        node.innerHTML = '';
-        node.appendChild(fragment);
-      }
-
+      // Remove components that are no longer in the new results
       Object.keys(existingComponents).forEach(key => {
-        if (!newOrder.includes(existingComponents[key].element)) {
-          existingComponents[key].element.remove();
+        const comp = existingComponents[key];
+        if (!newOrder.includes(comp.element)) {
+          comp.element.remove();
         }
       });
+
+      if (needsReordering(currentChildren, newOrder)) {
+        // Reorder items by placing them one after another starting from the template
+        let currentAnchor = template;
+        newOrder.forEach(childNode => {
+          currentAnchor.after(childNode);
+          currentAnchor = childNode;
+        });
+      }
     }
 
     component.addRenderHook('d-loop', {

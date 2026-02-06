@@ -615,6 +615,10 @@ export class ShadowComponent extends Component {
     return proxyToParent(this)
   }
 
+  get isShadowComponent() {
+    return true
+  }
+
   get state() {
     return this.parent ? this.parent.state : this.context.parentComponent.state
   }
